@@ -1,0 +1,180 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Consumer Service (Order Service) — GitLab CI Pipeline
+#
+# Flow:
+#   build → test → pact-test → pact-publish → can-i-deploy → deploy
+#
+# The can-i-deploy stage is the PACT safety gate:
+#   - Queries the PACT broker to confirm this consumer version is compatible
+#     with the currently deployed provider.
+#   - Blocks deployment if the provider has not yet verified the pacts.
+# ─────────────────────────────────────────────────────────────────────────────
+
+image: php:8.3-cli-alpine
+
+stages:
+  - build
+  - test
+  - pact-test
+  - pact-publish
+  - can-i-deploy
+  - deploy
+
+# ── Variables ─────────────────────────────────────────────────────────────────
+variables:
+  COMPOSER_HOME: "$CI_PROJECT_DIR/.composer"
+  APP_ENV: "test"
+  # Override these in GitLab → Settings → CI/CD → Variables
+  PACT_BROKER_BASE_URL: "${PACT_BROKER_BASE_URL}"
+  PACT_BROKER_USERNAME: "${PACT_BROKER_USERNAME}"
+  PACT_BROKER_PASSWORD: "${PACT_BROKER_PASSWORD}"
+  CONSUMER_NAME: "OrderService"
+  PROVIDER_NAME: "ProductService"
+  APP_VERSION: "${CI_COMMIT_SHORT_SHA}"
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+cache:
+  key: "${CI_COMMIT_REF_SLUG}-composer"
+  paths:
+    - vendor/
+    - .composer/
+
+# ── Before script ─────────────────────────────────────────────────────────────
+before_script:
+    - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev bash $PHPIZE_DEPS
+    - docker-php-ext-install intl zip mbstring
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: build
+# ─────────────────────────────────────────────────────────────────────────────
+composer-install:
+  stage: build
+  script:
+    - composer install --no-interaction --optimize-autoloader --no-progress
+  artifacts:
+    paths:
+      - vendor/
+    expire_in: 1 hour
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: test
+# Unit / integration tests — run before PACT to fail fast on broken logic
+# ─────────────────────────────────────────────────────────────────────────────
+unit-tests:
+  stage: test
+  needs: [composer-install]
+  script:
+    - php vendor/bin/phpunit tests/ --exclude-group=contract --testdox
+  coverage: '/^\s*Lines:\s*\d+.\d+\%/'
+  artifacts:
+    reports:
+      junit: test-results/junit.xml
+    when: always
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: pact-test
+# Consumer contract tests:
+#   - Boots the PACT mock server
+#   - Runs the real ProductServiceClient against it
+#   - Writes the pact JSON file to ./pacts/
+# ─────────────────────────────────────────────────────────────────────────────
+pact-consumer-tests:
+  stage: pact-test
+  needs: [unit-tests]
+  script:
+    - php vendor/bin/phpunit tests/Contract --testdox --group=contract
+  artifacts:
+    # Pass the generated pact file downstream to the publish stage
+    paths:
+      - pacts/
+    expire_in: 1 hour
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: pact-publish
+# Publish the generated pact file to the PACT Broker, tagged with:
+#   - The git commit SHA (immutable version identifier)
+#   - The branch name (so can-i-deploy knows the deployment target)
+# ─────────────────────────────────────────────────────────────────────────────
+pact-publish:
+  stage: pact-publish
+  needs: [pact-consumer-tests]
+  image: pactfoundation/pact-cli:latest
+  before_script: []  # Override global before_script — pact-cli image is self-contained
+  script:
+    - |
+      pact-broker publish ./pacts \
+        --consumer-app-version="${APP_VERSION}" \
+        --branch="${CI_COMMIT_REF_NAME}" \
+        --broker-base-url="${PACT_BROKER_BASE_URL}" \
+        --broker-username="${PACT_BROKER_USERNAME}" \
+        --broker-password="${PACT_BROKER_PASSWORD}"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: can-i-deploy
+#
+# THE SAFETY GATE — this is the core PACT CI/CD feature.
+#
+# Asks the broker: "Is version ${APP_VERSION} of OrderService compatible
+# with the version of ProductService currently deployed to <environment>?"
+#
+# The broker checks that:
+#   1. The pacts published by this consumer have been verified by the provider.
+#   2. The verified provider version is the one actually running in the target env.
+#
+# If either check fails → pipeline blocks → deployment cannot proceed.
+# ─────────────────────────────────────────────────────────────────────────────
+can-i-deploy:
+  stage: can-i-deploy
+  needs: [pact-publish]
+  image: pactfoundation/pact-cli:latest
+  before_script: []
+  script:
+    - |
+      pact-broker can-i-deploy \
+        --pacticipant="${CONSUMER_NAME}" \
+        --version="${APP_VERSION}" \
+        --to-environment=production \
+        --broker-base-url="${PACT_BROKER_BASE_URL}" \
+        --broker-username="${PACT_BROKER_USERNAME}" \
+        --broker-password="${PACT_BROKER_PASSWORD}" \
+        --retry-while-unknown=6 \
+        --retry-interval=10
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: deploy
+# Only runs on main after can-i-deploy passes.
+# Replace the script block with your real deployment (kubectl, helm, ssh, etc.)
+# ─────────────────────────────────────────────────────────────────────────────
+deploy-production:
+  stage: deploy
+  needs: [can-i-deploy]
+  image: alpine:latest
+  before_script: []
+  script:
+    - echo "Deploying OrderService ${APP_VERSION} to production..."
+    # ── Replace below with your real deploy command ──────────────────────────
+    # - kubectl set image deployment/order-service app=registry.example.com/order-service:${APP_VERSION}
+    # - helm upgrade order-service ./charts/order-service --set image.tag=${APP_VERSION}
+    - echo "Deploy complete."
+  environment:
+    name: production
+  after_script:
+    # Record the deployment in the PACT broker so can-i-deploy works for others
+    - |
+      docker run --rm pactfoundation/pact-cli:latest \
+        pact-broker record-deployment \
+          --pacticipant="${CONSUMER_NAME}" \
+          --version="${APP_VERSION}" \
+          --environment=production \
+          --broker-base-url="${PACT_BROKER_BASE_URL}" \
+          --broker-username="${PACT_BROKER_USERNAME}" \
+          --broker-password="${PACT_BROKER_PASSWORD}"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
