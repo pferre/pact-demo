@@ -50,13 +50,6 @@ COPY . /app
 
 RUN composer install --no-interaction --optimize-autoloader 2>/dev/null || true
 
-# Install pact-standalone for pact-broker CLI
-RUN curl -fsSL https://github.com/pact-foundation/pact-standalone/releases/download/v2.5.12/pact-2.5.12-linux-arm64.tar.gz \
-        -o /tmp/pact.tar.gz \
-    && tar -xzf /tmp/pact.tar.gz -C /usr/local \
-    && rm /tmp/pact.tar.gz \
-    && ln -s /usr/local/pact/bin/pact-broker /usr/local/bin/pact-broker
-
 EXPOSE 80
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

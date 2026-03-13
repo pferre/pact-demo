@@ -71,12 +71,15 @@ test-consumer: ## Run consumer contract tests (generates pact file)
 		php vendor/bin/phpunit tests/Contract --testdox
 
 pact-publish: ## Publish consumer pacts to the broker
-	docker compose exec consumer \
-		pact-broker publish /app/pacts \
+	docker run --rm \
+		--network pact-demo_pact_network \
+		-v $(PWD)/consumer/pacts:/pacts \
+		pactfoundation/pact-cli:latest \
+		pact-broker publish /pacts \
 			--consumer-app-version=1.0.0 \
-			--broker-base-url=${PACT_BROKER_URL:-http://pact-broker:9292} \
-			--broker-username=${PACT_BROKER_USERNAME:-pact} \
-			--broker-password=${PACT_BROKER_PASSWORD:-pact}
+			--broker-base-url=http://pact-broker:9292 \
+			--broker-username=pact \
+			--broker-password=pact
 
 test-provider: ## Run provider verification against broker pacts
 	docker compose exec provider \
