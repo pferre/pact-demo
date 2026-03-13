@@ -25,6 +25,8 @@ services:
       APP_SECRET: consumer-secret-change-me
       PROVIDER_BASE_URL: http://provider:80
       PACT_BROKER_URL: http://pact-broker:9292
+      PACT_BROKER_USERNAME: pact
+      PACT_BROKER_PASSWORD: pact
     networks:
       - pact_network
     depends_on:
@@ -47,6 +49,11 @@ services:
       APP_ENV: dev
       APP_SECRET: provider-secret-change-me
       PACT_BROKER_URL: http://pact-broker:9292
+      PACT_BROKER_USERNAME: pact
+      PACT_BROKER_PASSWORD: pact
+      PROVIDER_BASE_URL: http://provider:80
+      APP_VERSION: local
+      CI_COMMIT_REF_NAME: main
     networks:
       - pact_network
     depends_on:

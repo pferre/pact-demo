@@ -13,6 +13,12 @@
 # Webhook trigger:
 #   The PACT broker can be configured to trigger this pipeline automatically
 #   when a consumer publishes new pacts — see docs/ci-cd-flow.md for setup.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   PACT_BROKER_BASE_URL Your ngrok URL e.g. https://abc123.ngrok.io
+#     (self-hosted fallback: internal broker URL on your network)
+#   PACT_BROKER_USERNAME pact
+#   PACT_BROKER_PASSWORD (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -51,9 +57,10 @@ services:
 
 # ── Before script ─────────────────────────────────────────────────────────────
 before_script:
-  - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev $PHPIZE_DEPS
-  - docker-php-ext-install intl zip mbstring
-  - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev libffi-dev bash $PHPIZE_DEPS linux-headers
+    - docker-php-ext-install intl zip mbstring ffi
+    - echo "ffi.enable=1" >> /usr/local/etc/php/php.ini
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: build
@@ -98,19 +105,18 @@ unit-tests:
 pact-verify:
   stage: pact-verify
   needs: [unit-tests]
-  script:
-    # Start the Symfony app in the background so the verifier can hit it
+script:
     - php -S 0.0.0.0:8002 -t public/ &
-    - sleep 3  # Give the server a moment to start
-    # Run the provider verification test
+    - sleep 3
     - |
-      PROVIDER_BASE_URL="${PROVIDER_BASE_URL}" \
-      PACT_BROKER_URL="${PACT_BROKER_BASE_URL}" \
-      PACT_BROKER_USERNAME="${PACT_BROKER_USERNAME}" \
-      PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
-      APP_VERSION="${APP_VERSION}" \
-      php vendor/bin/phpunit tests/Contract --testdox --group=contract
-  rules:
+        PROVIDER_BASE_URL="${PROVIDER_BASE_URL}" \
+        PACT_BROKER_URL="${PACT_BROKER_BASE_URL}" \
+        PACT_BROKER_USERNAME="${PACT_BROKER_USERNAME}" \
+        PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
+        APP_VERSION="${APP_VERSION}" \
+        CI_COMMIT_REF_NAME="${CI_COMMIT_REF_NAME}" \
+        php vendor/bin/phpunit tests/Contract --testdox
+rules:
     - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
     # Also trigger when the PACT broker webhook fires (consumer pushed new pacts)
     - if: '$CI_PIPELINE_SOURCE == "trigger"'

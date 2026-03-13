@@ -8,6 +8,13 @@
 #   - Queries the PACT broker to confirm this consumer version is compatible
 #     with the currently deployed provider.
 #   - Blocks deployment if the provider has not yet verified the pacts.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   PACT_BROKER_BASE_URL Your ngrok URL e.g. https://abc123.ngrok.io
+#     (self-hosted fallback: internal broker URL on your network)
+#   PACT_BROKER_USERNAME pact
+#   PACT_BROKER_PASSWORD (mark as Masked)
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -41,9 +48,10 @@ cache:
 
 # ── Before script ─────────────────────────────────────────────────────────────
 before_script:
-  - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev $PHPIZE_DEPS
-  - docker-php-ext-install intl zip mbstring
-  - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev libffi-dev bash $PHPIZE_DEPS linux-headers
+    - docker-php-ext-install intl zip mbstring ffi
+    - echo "ffi.enable=1" >> /usr/local/etc/php/php.ini
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: build

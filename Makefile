@@ -8,6 +8,8 @@
 # ──────────────────────────────────────────────
 CYAN  := \033[0;36m
 RESET := \033[0m
+NETWORK := pact-demo_pact_network
+
 
 help: ## Show this help
 	@echo ""
@@ -70,9 +72,9 @@ test-consumer: ## Run consumer contract tests (generates pact file)
 	docker compose exec consumer \
 		php vendor/bin/phpunit tests/Contract --testdox
 
-pact-publish: ## Publish consumer pacts to the broker
+pact-publish: ## Publish consumer pacts to the broker via pact-cli container
 	docker run --rm \
-		--network pact-demo_pact_network \
+		--network $(NETWORK) \
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
@@ -104,3 +106,14 @@ health: ## Check health endpoints on both services
 	@echo "Consumer:"; curl -s http://localhost:8001/api/orders/health | python3 -m json.tool
 	@echo "Provider:"; curl -s http://localhost:8002/api/products/health | python3 -m json.tool
 	@echo "Broker:  "; curl -s http://localhost:9292/diagnostic/status/heartbeat | python3 -m json.tool
+
+ngrok-start: ## Expose the PACT broker publicly via ngrok (for GitLab CI webhooks)
+	@echo "$(CYAN)Starting ngrok tunnel to broker on port 9292...$(RESET)"
+	@echo "$(CYAN)Update PACT_BROKER_BASE_URL in GitLab CI/CD variables with the URL below$(RESET)"
+	ngrok http 9292
+
+ngrok-url: ## Print the current ngrok public URL for the broker
+	@curl -s http://localhost:4040/api/tunnels \
+		| python3 -c "import sys,json; tunnels=json.load(sys.stdin)['tunnels']; \
+		  print(next(t['public_url'] for t in tunnels if 'https' in t['public_url']))" \
+		2>/dev/null || echo "ngrok not running — run 'make ngrok-start' first"
