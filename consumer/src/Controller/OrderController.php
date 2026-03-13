@@ -30,7 +30,7 @@ class OrderController extends AbstractController
         }
 
         return $this->json([
-            'order_id'   => uniqid('ORD-'),
+            'order_id'   => uniqid('ORD-', true),
             'product_id' => $product['id'],
             'name'       => $product['name'],
             'price'      => $product['price'],
