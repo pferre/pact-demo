@@ -1,0 +1,103 @@
+.PHONY: help up down build restart logs shell-consumer shell-provider \
+        install-consumer install-provider \
+        test-consumer test-provider \
+        pact-publish pact-verify pact-full-cycle
+
+# ──────────────────────────────────────────────
+# Colours
+# ──────────────────────────────────────────────
+CYAN  := \033[0;36m
+RESET := \033[0m
+
+help: ## Show this help
+	@echo ""
+	@echo "  $(CYAN)PACT Demo — available commands$(RESET)"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-25s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+
+# ──────────────────────────────────────────────
+# Docker
+# ──────────────────────────────────────────────
+up: ## Start all services
+	docker compose up -d
+
+down: ## Stop all services
+	docker compose down
+
+build: ## Rebuild all images
+	docker compose build --no-cache
+
+restart: down up ## Restart all services
+
+logs: ## Tail logs for all services
+	docker compose logs -f
+
+logs-consumer: ## Tail consumer logs
+	docker compose logs -f consumer
+
+logs-provider: ## Tail provider logs
+	docker compose logs -f provider
+
+logs-broker: ## Tail broker logs
+	docker compose logs -f pact-broker
+
+# ──────────────────────────────────────────────
+# Shells
+# ──────────────────────────────────────────────
+shell-consumer: ## Open a shell in the consumer container
+	docker compose exec consumer sh
+
+shell-provider: ## Open a shell in the provider container
+	docker compose exec provider sh
+
+# ──────────────────────────────────────────────
+# Composer
+# ──────────────────────────────────────────────
+install-consumer: ## Run composer install in consumer
+	docker compose exec consumer composer install
+
+install-provider: ## Run composer install in provider
+	docker compose exec provider composer install
+
+install: install-consumer install-provider ## Install deps in both services
+
+# ──────────────────────────────────────────────
+# PACT workflow
+# ──────────────────────────────────────────────
+test-consumer: ## Run consumer contract tests (generates pact file)
+	docker compose exec consumer \
+		php vendor/bin/phpunit tests/Contract --testdox
+
+pact-publish: ## Publish consumer pacts to the broker
+	docker compose exec consumer \
+		pact-broker publish /app/pacts \
+			--consumer-app-version=1.0.0 \
+			--broker-base-url=${PACT_BROKER_URL:-http://pact-broker:9292} \
+			--broker-username=${PACT_BROKER_USERNAME:-pact} \
+			--broker-password=${PACT_BROKER_PASSWORD:-pact}
+
+test-provider: ## Run provider verification against broker pacts
+	docker compose exec provider \
+		php vendor/bin/phpunit tests/Contract --testdox
+
+pact-full-cycle: ## Run the full consumer → publish → verify cycle
+	@echo "$(CYAN)Step 1: Running consumer contract tests...$(RESET)"
+	@$(MAKE) test-consumer
+	@echo ""
+	@echo "$(CYAN)Step 2: Publishing pacts to broker...$(RESET)"
+	@$(MAKE) pact-publish
+	@echo ""
+	@echo "$(CYAN)Step 3: Provider verifying pacts from broker...$(RESET)"
+	@$(MAKE) test-provider
+	@echo ""
+	@echo "$(CYAN)✓ Full PACT cycle complete!$(RESET)"
+
+# ──────────────────────────────────────────────
+# Health checks
+# ──────────────────────────────────────────────
+health: ## Check health endpoints on both services
+	@echo "Consumer:"; curl -s http://localhost:8001/api/orders/health | python3 -m json.tool
+	@echo "Provider:"; curl -s http://localhost:8002/api/products/health | python3 -m json.tool
+	@echo "Broker:  "; curl -s http://localhost:9292/diagnostic/status/heartbeat | python3 -m json.tool

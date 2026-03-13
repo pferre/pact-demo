@@ -1,0 +1,72 @@
+networks:
+  pact_network:
+    driver: bridge
+
+volumes:
+  pact_broker_db:
+
+services:
+
+  # ─────────────────────────────────────────────
+  # CONSUMER SERVICE  (e.g. "Order Service")
+  # ─────────────────────────────────────────────
+  consumer:
+    platform: linux/arm64
+    build:
+      context: ./consumer
+      target: app_dev
+    container_name: pact_consumer
+    ports:
+      - "8001:80"
+    volumes:
+      - ./consumer:/app
+    environment:
+      APP_ENV: dev
+      APP_SECRET: consumer-secret-change-me
+      PROVIDER_BASE_URL: http://provider:80
+      PACT_BROKER_URL: http://pact-broker:9292
+    networks:
+      - pact_network
+    depends_on:
+      - provider
+      - pact-broker
+
+  # ─────────────────────────────────────────────
+  # PROVIDER SERVICE  (e.g. "Product Service")
+  # ─────────────────────────────────────────────
+  provider:
+    build:
+      context: ./provider
+      target: app_dev
+    container_name: pact_provider
+    ports:
+      - "8002:80"
+    volumes:
+      - ./provider:/app
+    environment:
+      APP_ENV: dev
+      APP_SECRET: provider-secret-change-me
+      PACT_BROKER_URL: http://pact-broker:9292
+    networks:
+      - pact_network
+    depends_on:
+      - pact-broker
+
+  # ─────────────────────────────────────────────
+  # PACT BROKER
+  # ─────────────────────────────────────────────
+  pact-broker:
+    image: pactfoundation/pact-broker:latest
+    container_name: pact_broker
+    ports:
+      - "9292:9292"
+    environment:
+      PACT_BROKER_DATABASE_URL: "sqlite:////tmp/pact_broker.sqlite3"
+      PACT_BROKER_BASIC_AUTH_USERNAME: pact
+      PACT_BROKER_BASIC_AUTH_PASSWORD: pact
+      PACT_BROKER_ALLOW_PUBLIC_READ: "true"
+      PACT_BROKER_LOG_LEVEL: INFO
+    volumes:
+      - pact_broker_db:/tmp
+    networks:
+      - pact_network

@@ -1,0 +1,56 @@
+{
+    "name": "pact-demo/provider",
+    "description": "PACT Demo - Provider Service (Product Service)",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.2",
+        "ext-ctype": "*",
+        "ext-iconv": "*",
+        "symfony/console": "7.*",
+        "symfony/dotenv": "7.*",
+        "symfony/flex": "^2",
+        "symfony/framework-bundle": "7.*",
+        "symfony/routing": "7.*",
+        "symfony/runtime": "7.*",
+        "symfony/serializer": "7.*",
+        "symfony/yaml": "7.*"
+    },
+    "require-dev": {
+        "pact-foundation/pact-php": "^10",
+        "symfony/phpunit-bridge": "7.*",
+        "phpunit/phpunit": "^11"
+    },
+    "config": {
+        "allow-plugins": {
+            "pact-foundation/composer-downloads-plugin": true,
+            "symfony/flex": true,
+            "symfony/runtime": true
+        },
+        "sort-packages": true
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "auto-scripts": {
+            "cache:clear": "symfony-cmd",
+            "assets:install %PUBLIC_DIR%": "symfony-cmd"
+        },
+        "post-install-cmd": ["@auto-scripts"],
+        "post-update-cmd": ["@auto-scripts"]
+    },
+    "extra": {
+        "symfony": {
+            "allow-contrib": false,
+            "require": "7.*"
+        }
+    }
+}

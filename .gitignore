@@ -1,0 +1,26 @@
+# Dependencies
+consumer/vendor/
+provider/vendor/
+
+# Symfony cache & logs
+consumer/var/
+provider/var/
+
+# Generated pact files (committed after consumer tests run)
+# Uncomment to ignore pacts and rely solely on broker:
+# consumer/pacts/
+
+# Environment overrides
+consumer/.env.local
+consumer/.env.*.local
+provider/.env.local
+provider/.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

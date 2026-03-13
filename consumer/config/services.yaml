@@ -1,0 +1,14 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Kernel.php'
+
+    App\Service\ProductServiceClient:
+        arguments:
+            $baseUrl: '%env(PROVIDER_BASE_URL)%'
