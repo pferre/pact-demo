@@ -2,6 +2,10 @@
 
 namespace App\Service;
 
+use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
+use Symfony\Contracts\HttpClient\Exception\ServerExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
@@ -11,17 +15,22 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  * The $baseUrl is injected via services.yaml so it can be overridden
  * in tests to point at the PACT mock server instead.
  */
-class ProductServiceClient
+readonly class ProductServiceClient
 {
     public function __construct(
-        private readonly HttpClientInterface $httpClient,
-        private readonly string $baseUrl,
+        private HttpClientInterface $httpClient,
+        private string $baseUrl,
     ) {}
 
     /**
      * Fetch a single product by ID.
      *
+     * @param int $id
      * @return array<string, mixed>|null
+     * @throws ClientExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws ServerExceptionInterface
      */
     public function getProduct(int $id): ?array
     {
@@ -46,6 +55,10 @@ class ProductServiceClient
      * Fetch all products.
      *
      * @return array<int, array<string, mixed>>
+     * @throws ClientExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws ServerExceptionInterface
      */
     public function getProducts(): array
     {
