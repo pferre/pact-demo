@@ -3,6 +3,7 @@
 namespace App\Tests\Contract;
 
 use GuzzleHttp\Psr7\Uri;
+use PhpPact\Standalone\ProviderVerifier\Exception\InvalidVerifierHandleException;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderInfo;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderTransport;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\PublishOptions;
@@ -20,12 +21,12 @@ use Symfony\Component\Dotenv\Dotenv;
  * reading config consistently from the same .env files as the app.
  *
  * Env vars (define in provider/.env or provider/.env.local):
- *   PACT_BROKER_URL          Broker base URL
- *   PACT_BROKER_USERNAME     Broker basic auth username
- *   PACT_BROKER_PASSWORD     Broker basic auth password
- *   PROVIDER_BASE_URL        URL of the running provider
- *   APP_VERSION              Version string (CI commit SHA or local fallback)
- *   CI_COMMIT_REF_NAME       Branch name for scoping verification
+ *   PACT_BROKER_URL Broker base URL
+ *   PACT_BROKER_USERNAME Broker basic auth username
+ *   PACT_BROKER_PASSWORD Broker basic auth password
+ *   PROVIDER_BASE_URL URL of the running provider
+ *   APP_VERSION Version string (CI commit SHA or local fallback)
+ *   CI_COMMIT_REF_NAME Branch name for scoping verification
  */
 class ProductServiceProviderTest extends TestCase
 {
@@ -37,15 +38,19 @@ class ProductServiceProviderTest extends TestCase
         $dotenv->loadEnv(dirname(__DIR__, 2) . '/.env');
     }
 
+    /**
+     * @throws InvalidVerifierHandleException
+     * @group contract
+     */
     public function testProviderHonoursConsumerContracts(): void
     {
         // ── Resolve env vars ──────────────────────────────────────────────
-        $brokerUrl       = $_ENV['PACT_BROKER_URL']      ?? 'http://pact-broker:9292';
-        $brokerUser      = $_ENV['PACT_BROKER_USERNAME'] ?? 'pact';
-        $brokerPass      = $_ENV['PACT_BROKER_PASSWORD'] ?? 'pact';
-        $providerUrl     = $_ENV['PROVIDER_BASE_URL']    ?? 'http://provider:80';
-        $providerBranch  = $_ENV['CI_COMMIT_REF_NAME']   ?? 'main';
-        $providerVersion = $_ENV['APP_VERSION']          ?? ('local-' . date('YmdHis'));
+        $brokerUrl = $_ENV['PACT_BROKER_BASE_URL'] ?? $_ENV['PACT_BROKER_URL'] ?? 'http://pact-broker:9292';
+        $brokerUser = $_ENV['PACT_BROKER_USERNAME'] ?? 'pact';
+        $brokerPass = $_ENV['PACT_BROKER_PASSWORD'] ?? 'pact';
+        $providerUrl = $_ENV['PROVIDER_BASE_URL'] ?? 'http://provider:80';
+        $providerBranch = $_ENV['CI_COMMIT_REF_NAME'] ?? 'main';
+        $providerVersion = $_ENV['APP_VERSION'] ?? ('local-' . date('YmdHis'));
 
         // ── Parse provider URL into host/port/scheme ──────────────────────
         $parsed = parse_url($providerUrl);
@@ -92,11 +97,11 @@ class ProductServiceProviderTest extends TestCase
         // ── Run verification ──────────────────────────────────────────────
         $verifier = new Verifier($config);
         $verifier->addBroker($broker);
-        $verifier->verify();
+        $result = $verifier->verify();
 
         $this->assertTrue(
-            true,
-            "ProductService@{$providerVersion} verified all consumer pacts successfully."
+            $result,
+            "ProductService@{$providerVersion} failed to verify one or more consumer pacts.",
         );
     }
 }
