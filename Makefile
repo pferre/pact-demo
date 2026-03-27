@@ -131,7 +131,7 @@ pact-publish-message: ## Publish message pacts to broker
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
-			--consumer-app-version=1.1.0 \
+			--consumer-app-version=$(shell git rev-parse --short HEAD) \
 			--broker-base-url=http://pact-broker:9292 \
 			--broker-username=pact \
 			--broker-password=pact
