@@ -48,8 +48,9 @@ cache:
 
 # ── Before script ─────────────────────────────────────────────────────────────
 before_script:
-    - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev libffi-dev bash $PHPIZE_DEPS linux-headers
+    - apk add --no-cache curl zip unzip git icu-dev oniguruma-dev libzip-dev libffi-dev bash rabbitmq-c-dev $PHPIZE_DEPS linux-headers
     - docker-php-ext-install intl zip mbstring ffi
+    - pecl install amqp && docker-php-ext-enable amqp
     - echo "ffi.enable=1" >> /usr/local/etc/php/php.ini
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 

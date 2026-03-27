@@ -117,3 +117,40 @@ ngrok-url: ## Print the current ngrok public URL for the broker
 		| python3 -c "import sys,json; tunnels=json.load(sys.stdin)['tunnels']; \
 		  print(next(t['public_url'] for t in tunnels if 'https' in t['public_url']))" \
 		2>/dev/null || echo "ngrok not running — run 'make ngrok-start' first"
+
+# ──────────────────────────────────────────────
+# Message PACT workflow (RabbitMQ)
+# ──────────────────────────────────────────────
+test-message-consumer: ## Run order.created message pact consumer test
+	docker compose exec consumer \
+		php vendor/bin/phpunit tests/Contract/OrderCreatedMessageTest.php --testdox
+
+pact-publish-message: ## Publish message pacts to broker
+	docker run --rm \
+		--network $(NETWORK) \
+		-v $(PWD)/consumer/pacts:/pacts \
+		pactfoundation/pact-cli:latest \
+		pact-broker publish /pacts \
+			--consumer-app-version=1.1.0 \
+			--broker-base-url=http://pact-broker:9292 \
+			--broker-username=pact \
+			--broker-password=pact
+
+test-message-provider: ## Run order.created message pact provider verification
+	docker compose exec provider \
+		php vendor/bin/phpunit tests/Contract/OrderCreatedMessageProviderTest.php --testdox
+
+pact-message-cycle: ## Run full message pact cycle
+	@echo "$(CYAN)Step 1: Consumer message pact test...$(RESET)"
+	@$(MAKE) test-message-consumer
+	@echo ""
+	@echo "$(CYAN)Step 2: Publishing message pacts...$(RESET)"
+	@$(MAKE) pact-publish-message
+	@echo ""
+	@echo "$(CYAN)Step 3: Provider verifying message pacts...$(RESET)"
+	@$(MAKE) test-message-provider
+	@echo ""
+	@echo "$(GREEN)✓ Message PACT cycle complete!$(RESET)"
+
+rabbitmq-ui: ## Open RabbitMQ management UI
+	open http://localhost:15673

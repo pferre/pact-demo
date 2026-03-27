@@ -27,11 +27,16 @@ services:
       PACT_BROKER_URL: http://pact-broker:9292
       PACT_BROKER_USERNAME: pact
       PACT_BROKER_PASSWORD: pact
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5673
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
     networks:
       - pact_network
     depends_on:
       - provider
       - pact-broker
+      - rabbitmq
 
   # ─────────────────────────────────────────────
   # PROVIDER SERVICE  (e.g. "Product Service")
@@ -75,5 +80,17 @@ services:
       PACT_BROKER_LOG_LEVEL: INFO
     volumes:
       - pact_broker_db:/tmp
+    networks:
+      - pact_network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: pact_rabbitmq
+    ports:
+      - "5673:5673"
+      - "15673:15673"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     networks:
       - pact_network

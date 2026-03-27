@@ -1,0 +1,99 @@
+{
+  "consumer": {
+    "name": "OrderService"
+  },
+  "messages": [
+    {
+      "contents": {
+        "createdAt": "2024-01-01T00:00:00+00:00",
+        "currency": "GBP",
+        "customerEmail": "customer@example.com",
+        "customerId": "CUST-001",
+        "event": "order.created",
+        "orderId": "ORD-abc123",
+        "totalAmount": 49.99
+      },
+      "description": "an order.created event",
+      "matchingRules": {
+        "body": {
+          "$.createdAt": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.currency": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.customerEmail": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.customerId": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.event": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.orderId": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.totalAmount": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      },
+      "providerStates": [
+        {
+          "name": "an order has been placed"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.4.26",
+      "models": "1.2.7"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "ProductService-Events"
+  }
+}

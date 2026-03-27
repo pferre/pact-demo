@@ -11,7 +11,8 @@ RUN apk add --no-cache \
     icu-dev \
     oniguruma-dev \
     libzip-dev \
-    libffi-dev
+    libffi-dev \
+    rabbitmq-c-dev
 
 # Install PHP extensions
 RUN docker-php-ext-install \
@@ -20,6 +21,13 @@ RUN docker-php-ext-install \
     zip \
     mbstring \
     ffi
+
+RUN apk add --no-cache --virtual .amqp-build-deps \
+        $PHPIZE_DEPS \
+        linux-headers \
+    && pecl install amqp \
+    && docker-php-ext-enable amqp \
+    && apk del .amqp-build-deps
 
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

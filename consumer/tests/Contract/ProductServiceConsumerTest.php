@@ -3,6 +3,7 @@
 namespace App\Tests\Contract;
 
 use App\Service\ProductServiceClient;
+use PhpPact\Config\Exception\InvalidWriteModeException;
 use PhpPact\Consumer\InteractionBuilder;
 use PhpPact\Consumer\Matcher\Matcher;
 use PhpPact\Consumer\Model\ConsumerRequest;
@@ -26,6 +27,9 @@ class ProductServiceConsumerTest extends TestCase
     private MockServerConfig $config;
     private Matcher $matcher;
 
+    /**
+     * @throws InvalidWriteModeException
+     */
     protected function setUp(): void
     {
         $this->matcher = new Matcher();
@@ -35,6 +39,7 @@ class ProductServiceConsumerTest extends TestCase
             ->setConsumer('OrderService')
             ->setProvider('ProductService')
             ->setPactDir('/app/pacts')
+            ->setPactFileWriteMode('merge')  // ← add this
             ->setHost('localhost')
             ->setPort(7200);
 
