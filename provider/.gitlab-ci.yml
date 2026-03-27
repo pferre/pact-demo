@@ -170,6 +170,14 @@ deploy-production:
               --broker-base-url="${PACT_BROKER_BASE_URL}" \
               --broker-username="${PACT_BROKER_USERNAME}" \
               --broker-password="${PACT_BROKER_PASSWORD}"
+            - |
+            pact-broker record-deployment \
+              --pacticipant="ProductService-Events" \
+              --version="${APP_VERSION}" \
+              --environment=production \
+              --broker-base-url="${PACT_BROKER_BASE_URL}" \
+              --broker-username="${PACT_BROKER_USERNAME}" \
+              --broker-password="${PACT_BROKER_PASSWORD}"
     environment:
         name: production
     rules:
