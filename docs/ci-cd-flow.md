@@ -178,13 +178,16 @@ meaningful — it compares against the **actual deployed version**, not just
 the latest verified version.
 
 ```
+# Updated:
 Broker state after both services deploy:
 
-  OrderService  v abc1234  → production ✅
-  ProductService v def5678  → production ✅
+  OrderService           v abc1234  → production ✅
+  ProductService         v def5678  → production ✅
+  ProductService-Events  v def5678  → production ✅
 
   Verified matrix:
-    OrderService@abc1234 × ProductService@def5678 = ✅ compatible
+    OrderService@abc1234 × ProductService@def5678         = ✅ compatible
+    OrderService@abc1234 × ProductService-Events@def5678  = ✅ compatible
 ```
 
 If a new consumer version hasn't been verified against the production
