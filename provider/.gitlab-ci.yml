@@ -16,7 +16,6 @@
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
 #   PACT_BROKER_BASE_URL Your ngrok URL e.g. https://abc123.ngrok.io
-#     (self-hosted fallback: internal broker URL on your network)
 #   PACT_BROKER_USERNAME pact
 #   PACT_BROKER_PASSWORD (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,36 +23,31 @@
 image: php:8.3-cli-alpine
 
 stages:
-  - build
-  - test
-  - pact-verify
-  - can-i-deploy
-  - deploy
+    - build
+    - test
+    - pact-verify
+    - can-i-deploy
+    - deploy
 
 # ── Variables ─────────────────────────────────────────────────────────────────
 variables:
     COMPOSER_HOME: "$CI_PROJECT_DIR/.composer"
     APP_ENV: "test"
-    # PACT_BROKER_BASE_URL: "${PACT_BROKER_BASE_URL}"
-    # PACT_BROKER_USERNAME: "${PACT_BROKER_USERNAME}"
-    # PACT_BROKER_PASSWORD: "${PACT_BROKER_PASSWORD}"
     PROVIDER_NAME: "ProductService"
     APP_VERSION: "${CI_COMMIT_SHORT_SHA}"
-    # URL of the provider during CI — spin up the app in a service container
-     # or point at a review/staging environment
     PROVIDER_BASE_URL: "http://localhost:8002"
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 cache:
-  key: "${CI_COMMIT_REF_SLUG}-composer"
-  paths:
-    - vendor/
-    - .composer/
+    key: "${CI_COMMIT_REF_SLUG}-composer"
+    paths:
+        - vendor/
+        - .composer/
 
-# ── Services — run the provider app alongside the test runner ─────────────────
+# ── Services ──────────────────────────────────────────────────────────────────
 services:
-  - name: php:8.3-fpm-alpine
-    alias: provider-app
+    - name: php:8.3-fpm-alpine
+      alias: provider-app
 
 # ── Before script ─────────────────────────────────────────────────────────────
 before_script:
@@ -67,37 +61,25 @@ before_script:
 # STAGE: build
 # ─────────────────────────────────────────────────────────────────────────────
 composer-install:
-  stage: build
-  script:
-    - composer install --no-interaction --optimize-autoloader --no-progress
-  artifacts:
-    paths:
-      - vendor/
-    expire_in: 1 hour
+    stage: build
+    script:
+        - composer install --no-interaction --optimize-autoloader --no-progress
+    artifacts:
+        paths:
+            - vendor/
+        expire_in: 1 hour
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: test
 # ─────────────────────────────────────────────────────────────────────────────
 unit-tests:
-  stage: test
-  needs: [composer-install]
-  script:
-    - php vendor/bin/phpunit tests/ --exclude-group=contract --testdox
+    stage: test
+    needs: [composer-install]
+    script:
+        - php vendor/bin/phpunit tests/ --exclude-group=contract --testdox
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: pact-verify
-#
-# This is the provider's equivalent of the consumer's pact-test stage.
-#
-# What happens here:
-#   1. The PACT verifier fetches ALL pacts for ProductService from the broker
-#      (including pacts from every consumer — right now just OrderService)
-#   2. It replays each interaction (request) against the REAL running provider
-#   3. It asserts the real responses match the consumer's expectations
-#   4. Results are published back to the broker
-#
-# If a consumer published a new pact that this provider version doesn't satisfy
-# → this job fails → can-i-deploy fails → deployment blocked.
 # ─────────────────────────────────────────────────────────────────────────────
 pact-verify:
     stage: pact-verify
@@ -115,40 +97,30 @@ pact-verify:
             APP_VERSION="${APP_VERSION}" \
             CI_COMMIT_REF_NAME="${CI_COMMIT_REF_NAME}" \
             php vendor/bin/phpunit tests/Contract --testdox
+    rules:
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "trigger"'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: can-i-deploy
-#
-# THE SAFETY GATE (provider side).
-#
-# Asks: "Is this version of ProductService safe to deploy to production?"
-# The broker checks all consumers that have a pact with ProductService and
-# confirms this provider version has successfully verified all of them.
-#
-# Scenario this catches:
-#   Team A changes GET /api/products/{id} to return `product_name` instead
-#   of `name`. The consumer's contract says it expects `name`. Verification
-#   fails. can-i-deploy returns non-zero. Pipeline blocked. Team A is notified
-#   BEFORE the breaking change ever reaches production.
 # ─────────────────────────────────────────────────────────────────────────────
 can-i-deploy:
-  stage: can-i-deploy
-  needs: [pact-verify]
-  image: pactfoundation/pact-cli:latest
-  before_script: []
-  script:
-    - |
-      pact-broker can-i-deploy \
-        --pacticipant="${PROVIDER_NAME}" \
-        --version="${APP_VERSION}" \
-        --to-environment=production \
-        --broker-base-url="${PACT_BROKER_BASE_URL}" \
-        --broker-username="${PACT_BROKER_USERNAME}" \
-        --broker-password="${PACT_BROKER_PASSWORD}" \
-        --retry-while-unknown=6 \
-        --retry-interval=10
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    stage: can-i-deploy
+    needs: [pact-verify]
+    image: pactfoundation/pact-cli:latest
+    before_script: []
+    script:
+        - |
+            pact-broker can-i-deploy \
+              --pacticipant="${PROVIDER_NAME}" \
+              --version="${APP_VERSION}" \
+              --to-environment=production \
+              --broker-base-url="${PACT_BROKER_BASE_URL}" \
+              --broker-username="${PACT_BROKER_USERNAME}" \
+              --broker-password="${PACT_BROKER_PASSWORD}" \
+              --retry-while-unknown=6 \
+              --retry-interval=10
+    rules:
+        - if: '$CI_COMMIT_BRANCH == "main"'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: deploy
@@ -170,7 +142,7 @@ deploy-production:
               --broker-base-url="${PACT_BROKER_BASE_URL}" \
               --broker-username="${PACT_BROKER_USERNAME}" \
               --broker-password="${PACT_BROKER_PASSWORD}"
-            - |
+        - |
             pact-broker record-deployment \
               --pacticipant="ProductService-Events" \
               --version="${APP_VERSION}" \
