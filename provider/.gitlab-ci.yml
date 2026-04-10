@@ -90,12 +90,12 @@ pact-verify:
     stage: pact-verify
     needs: [unit-tests]
     variables:
-        PACT_BROKER_BASE_URL: ${PACT_BROKER_BASE_URL}
-        PACT_BROKER_USERNAME: ${PACT_BROKER_USERNAME}
-        PACT_BROKER_PASSWORD: ${PACT_BROKER_PASSWORD}
+        PACT_BROKER_BASE_URL: $PACT_BROKER_BASE_URL
+        PACT_BROKER_USERNAME: $PACT_BROKER_USERNAME
+        PACT_BROKER_PASSWORD: $PACT_BROKER_PASSWORD
         PROVIDER_BASE_URL: "http://localhost:8002"
-        APP_VERSION: ${APP_VERSION}
-        CI_COMMIT_REF_NAME: ${CI_COMMIT_REF_NAME}
+        APP_VERSION: $APP_VERSION
+        CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME
     script:
         - php -S 0.0.0.0:8002 -t public/ &
         - sleep 3
