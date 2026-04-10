@@ -32,10 +32,10 @@ class ProductServiceProviderTest extends TestCase
 {
     protected function setUp(): void
     {
-        if (!getenv('CI')) {
-            $dotenv = new Dotenv();
-            $dotenv->loadEnv(dirname(__DIR__, 2) . '/.env');
-        }
+        // Load .env into $_ENV / $_SERVER without overriding vars
+        // already set by the OS (e.g. CI-injected values take precedence)
+        $dotenv = new Dotenv();
+        $dotenv->loadEnv(dirname(__DIR__, 2) . '/.env');
     }
 
     /**

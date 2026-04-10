@@ -29,10 +29,8 @@ class OrderCreatedMessageProviderTest extends TestCase
 
     protected function setUp(): void
     {
-        if (!getenv('CI')) {
-            $dotenv = new Dotenv();
-            $dotenv->loadEnv(dirname(__DIR__, 2) . '/.env');
-        }
+        (new Dotenv())->loadEnv(dirname(__DIR__, 2) . '/.env');
+        $this->startMessageServer();
     }
 
     protected function tearDown(): void

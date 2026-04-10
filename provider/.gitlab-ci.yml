@@ -91,18 +91,17 @@ unit-tests:
 pact-verify:
     stage: pact-verify
     needs: [unit-tests]
+    variables:
+        PACT_BROKER_BASE_URL: ${PACT_BROKER_BASE_URL}
+        PACT_BROKER_USERNAME: ${PACT_BROKER_USERNAME}
+        PACT_BROKER_PASSWORD: ${PACT_BROKER_PASSWORD}
+        PROVIDER_BASE_URL: ${PROVIDER_BASE_URL}
+        APP_VERSION: ${APP_VERSION}
+        CI_COMMIT_REF_NAME: ${CI_COMMIT_REF_NAME}
     script:
         - php -S 0.0.0.0:8002 -t public/ &
         - sleep 3
-        - |
-            export PROVIDER_BASE_URL=${PROVIDER_BASE_URL}
-            export PACT_BROKER_BASE_URL=${PACT_BROKER_BASE_URL}
-            export PACT_BROKER_USERNAME=${PACT_BROKER_USERNAME}
-            export PACT_BROKER_PASSWORD=${PACT_BROKER_PASSWORD}
-            export APP_VERSION=${APP_VERSION}
-            export CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME}
-            echo "BROKER URL IS: ${PACT_BROKER_BASE_URL}"
-            php vendor/bin/phpunit tests/Contract --testdox
+        - php vendor/bin/phpunit tests/Contract --testdox
     rules:
         - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
         - if: '$CI_PIPELINE_SOURCE == "trigger"'
