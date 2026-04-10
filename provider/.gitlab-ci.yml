@@ -145,7 +145,7 @@ fpm-soak-test:
 
         # Enable FPM status endpoint
         - echo "pm.status_path = /fpm-status" >> /usr/local/etc/php-fpm.d/www.conf
-        
+
         # Write nginx config — mirrors docker/nginx.conf structure
         - |
             cat > /tmp/nginx-soak.conf << EOF
