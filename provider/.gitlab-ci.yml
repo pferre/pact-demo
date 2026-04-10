@@ -303,7 +303,7 @@ can-i-deploy:
     script:
         - |
             pact-broker can-i-deploy \
-              --pacticipant="${PROVIDER_NAME}" \
+              --pacticipant="ProductService" \
               --version="${APP_VERSION}" \
               --to-environment=production \
               --broker-base-url="${PACT_BROKER_BASE_URL}" \
