@@ -322,10 +322,14 @@ deploy-production:
     needs: [can-i-deploy]
     image: pactfoundation/pact-cli:latest
     before_script: []
+    variables:
+        PACT_BROKER_BASE_URL: $PACT_BROKER_BASE_URL
+        PACT_BROKER_USERNAME: $PACT_BROKER_USERNAME
+        PACT_BROKER_PASSWORD: $PACT_BROKER_PASSWORD
+        APP_VERSION: $APP_VERSION
+        PROVIDER_NAME: "ProductService"
     script:
         - echo "Deploying ProductService ${APP_VERSION} to production..."
-        # - kubectl set image deployment/product-service app=registry.example.com/product-service:${APP_VERSION}
-        # - helm upgrade product-service ./charts/product-service --set image.tag=${APP_VERSION}
         - echo "Deploy complete."
         - |
             pact-broker record-deployment \
