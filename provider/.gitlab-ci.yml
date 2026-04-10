@@ -15,9 +15,9 @@
 #   when a consumer publishes new pacts — see docs/ci-cd-flow.md for setup.
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
-#   PACT_BROKER_BASE_URL Your broker URL e.g. https://abc123.ngrok.io
-#   PACT_BROKER_USERNAME pact
-#   PACT_BROKER_PASSWORD (mark as Masked)
+#   PACT_BROKER_BASE_URL  Your broker URL e.g. https://abc123.ngrok.io
+#   PACT_BROKER_USERNAME  pact
+#   PACT_BROKER_PASSWORD  (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -145,7 +145,7 @@ fpm-soak-test:
 
         # Enable FPM status endpoint
         - echo "pm.status_path = /fpm-status" >> /usr/local/etc/php-fpm.d/www.conf
-
+        
         # Write nginx config — mirrors docker/nginx.conf structure
         - |
             cat > /tmp/nginx-soak.conf << EOF
@@ -169,7 +169,7 @@ fpm-soak-test:
                 location ~ ^/index\.php(/|$) {
                   fastcgi_pass 127.0.0.1:9000;
                   fastcgi_split_path_info ^(.+\.php)(/.*)$;
-                  include fastcgi_params;
+                  include /etc/nginx/fastcgi_params;
                   fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
                   fastcgi_param DOCUMENT_ROOT \$realpath_root;
                   internal;
@@ -178,7 +178,7 @@ fpm-soak-test:
                 location = /fpm-status {
                   allow 127.0.0.1;
                   deny all;
-                  include fastcgi_params;
+                  include /etc/nginx/fastcgi_params;
                   fastcgi_pass 127.0.0.1:9000;
                   fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
                 }

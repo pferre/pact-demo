@@ -5,9 +5,9 @@
 #   build → test → pact-test → soak-test → pact-publish → can-i-deploy → deploy
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
-#   PACT_BROKER_BASE_URL Your broker URL e.g. https://abc123.ngrok.io
-#   PACT_BROKER_USERNAME pact
-#   PACT_BROKER_PASSWORD (mark as Masked)
+#   PACT_BROKER_BASE_URL  Your broker URL e.g. https://abc123.ngrok.io
+#   PACT_BROKER_USERNAME  pact
+#   PACT_BROKER_PASSWORD  (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -151,7 +151,7 @@ fpm-soak-test:
                 location ~ ^/index\.php(/|$) {
                   fastcgi_pass 127.0.0.1:9000;
                   fastcgi_split_path_info ^(.+\.php)(/.*)$;
-                  include fastcgi_params;
+                  include /etc/nginx/fastcgi_params;
                   fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
                   fastcgi_param DOCUMENT_ROOT \$realpath_root;
                   internal;
@@ -160,7 +160,7 @@ fpm-soak-test:
                 location = /fpm-status {
                   allow 127.0.0.1;
                   deny all;
-                  include fastcgi_params;
+                  include /etc/nginx/fastcgi_params;
                   fastcgi_pass 127.0.0.1:9000;
                   fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
                 }
