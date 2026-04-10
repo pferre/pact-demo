@@ -95,12 +95,12 @@ pact-verify:
         - php -S 0.0.0.0:8002 -t public/ &
         - sleep 3
         - |
-            PROVIDER_BASE_URL="${PROVIDER_BASE_URL}" \
-            PACT_BROKER_BASE_URL="${PACT_BROKER_BASE_URL}" \
-            PACT_BROKER_USERNAME="${PACT_BROKER_USERNAME}" \
-            PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
-            APP_VERSION="${APP_VERSION}" \
-            CI_COMMIT_REF_NAME="${CI_COMMIT_REF_NAME}" \
+            PROVIDER_BASE_URL=${PROVIDER_BASE_URL} \
+            PACT_BROKER_BASE_URL=${PACT_BROKER_BASE_URL} \
+            PACT_BROKER_USERNAME=${PACT_BROKER_USERNAME} \
+            PACT_BROKER_PASSWORD=${PACT_BROKER_PASSWORD} \
+            APP_VERSION=${APP_VERSION} \
+            CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME} \
             php vendor/bin/phpunit tests/Contract --testdox
     rules:
         - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
