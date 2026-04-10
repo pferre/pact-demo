@@ -2,20 +2,20 @@
 # Provider Service (Product Service) — GitLab CI Pipeline
 #
 # Flow:
-#   build → test → pact-verify → can-i-deploy → deploy
+#   build → test → pact-verify → soak-test → can-i-deploy → deploy
 #
-# Key difference from the consumer pipeline:
+# Key differences from the consumer pipeline:
 #   - There is NO pact-publish stage (the provider doesn't generate pacts)
-#   - Instead, pact-verify FETCHES pacts from the broker and replays them
-#     against the real running provider to prove compliance
-#   - can-i-deploy then confirms it's safe to ship this provider version
+#   - pact-verify FETCHES pacts from the broker and replays them against
+#     the real running provider to prove compliance
+#   - can-i-deploy needs both pact-verify AND fpm-soak-test to pass
 #
 # Webhook trigger:
 #   The PACT broker can be configured to trigger this pipeline automatically
 #   when a consumer publishes new pacts — see docs/ci-cd-flow.md for setup.
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
-#   PACT_BROKER_BASE_URL Your ngrok URL e.g. https://abc123.ngrok.io
+#   PACT_BROKER_BASE_URL Your broker URL e.g. https://abc123.ngrok.io
 #   PACT_BROKER_USERNAME pact
 #   PACT_BROKER_PASSWORD (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +26,7 @@ stages:
     - build
     - test
     - pact-verify
+    - soak-test
     - can-i-deploy
     - deploy
 
@@ -33,6 +34,9 @@ stages:
 variables:
     COMPOSER_HOME: "$CI_PROJECT_DIR/.composer"
     APP_ENV: "test"
+    PACT_BROKER_BASE_URL: "${PACT_BROKER_BASE_URL}"
+    PACT_BROKER_USERNAME: "${PACT_BROKER_USERNAME}"
+    PACT_BROKER_PASSWORD: "${PACT_BROKER_PASSWORD}"
     PROVIDER_NAME: "ProductService"
     APP_VERSION: "${CI_COMMIT_SHORT_SHA}"
     PROVIDER_BASE_URL: "http://localhost:8002"
@@ -43,11 +47,6 @@ cache:
     paths:
         - vendor/
         - .composer/
-
-# ── Services ──────────────────────────────────────────────────────────────────
-services:
-    - name: php:8.3-fpm-alpine
-      alias: provider-app
 
 # ── Before script ─────────────────────────────────────────────────────────────
 before_script:
@@ -77,20 +76,26 @@ unit-tests:
     needs: [composer-install]
     script:
         - php vendor/bin/phpunit tests/ --exclude-group=contract --testdox
+    artifacts:
+        reports:
+            junit: test-results/junit.xml
+        when: always
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: pact-verify
+#
+# Fetches all pacts published by consumers from the broker and replays every
+# interaction against the real running provider. If this provider version
+# breaks any consumer contract → job fails → can-i-deploy blocked.
 # ─────────────────────────────────────────────────────────────────────────────
 pact-verify:
     stage: pact-verify
     needs: [unit-tests]
     script:
-        - mkdir -p var/cache var/log
-        - APP_ENV=dev php -S 0.0.0.0:8002 -t public/ > /tmp/php-server.log 2>&1 &
-        - sleep 5
-        - curl --retry 5 --retry-delay 2 --retry-connrefused http://localhost:8002/api/products/health || (cat /tmp/php-server.log && exit 1)
+        - php -S 0.0.0.0:8002 -t public/ &
+        - sleep 3
         - |
-            PROVIDER_BASE_URL="http://localhost:8002" \
+            PROVIDER_BASE_URL="${PROVIDER_BASE_URL}" \
             PACT_BROKER_URL="${PACT_BROKER_BASE_URL}" \
             PACT_BROKER_USERNAME="${PACT_BROKER_USERNAME}" \
             PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
@@ -98,14 +103,201 @@ pact-verify:
             CI_COMMIT_REF_NAME="${CI_COMMIT_REF_NAME}" \
             php vendor/bin/phpunit tests/Contract --testdox
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "trigger"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: soak-test
+#
+# Starts php-fpm + nginx directly in the CI job and fires concurrent HTTP
+# requests for SOAK_DURATION seconds. Fails the pipeline if FPM workers
+# crash (SIGSEGV / child exited on signal) or stop accepting connections.
+#
+# No Docker-in-Docker. No privileged runner. Just nginx + curl.
+#
+# The image: line is the key — it must match the FROM line in your Dockerfile.
+# To validate this test catches a regression, change image: to
+# php:8.4.19-fpm-alpine on a branch and watch it fail at the log scan step.
+# ─────────────────────────────────────────────────────────────────────────────
+fpm-soak-test:
+    stage: soak-test
+    needs: [unit-tests]
+    image: php:8.4.17-fpm-alpine
+    variables:
+        SOAK_DURATION: "30"
+        SOAK_CONCURRENCY: "20"
+        SOAK_HEALTH_ROUTE: "/api/products/health"
+        SOAK_PORT: "8080"
+    before_script: []
+    script:
+        # Install nginx — the only package needed, curl is already in the image
+        - apk add --no-cache nginx
+
+        # Mirror docker/php-prod.ini opcache settings exactly
+        - |
+            cat > /usr/local/etc/php/conf.d/soak-opcache.ini << 'EOF'
+            opcache.enable=1
+            opcache.memory_consumption=128
+            opcache.max_accelerated_files=10000
+            opcache.revalidate_freq=0
+            ffi.enable=1
+            EOF
+
+        # Enable FPM status endpoint
+        - echo "pm.status_path = /fpm-status" >> /usr/local/etc/php-fpm.d/www.conf
+
+        # Write nginx config — mirrors docker/nginx.conf structure
+        - |
+            cat > /tmp/nginx-soak.conf << EOF
+            worker_processes 1;
+            error_log /tmp/nginx-error.log warn;
+            pid /tmp/nginx.pid;
+            events { worker_connections 256; }
+            http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              server {
+                listen ${SOAK_PORT};
+                server_name _;
+                root ${CI_PROJECT_DIR}/public;
+                index index.php;
+
+                location / {
+                  try_files \$uri /index.php\$is_args\$args;
+                }
+
+                location ~ ^/index\.php(/|$) {
+                  fastcgi_pass 127.0.0.1:9000;
+                  fastcgi_split_path_info ^(.+\.php)(/.*)$;
+                  include fastcgi_params;
+                  fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+                  fastcgi_param DOCUMENT_ROOT \$realpath_root;
+                  internal;
+                }
+
+                location = /fpm-status {
+                  allow 127.0.0.1;
+                  deny all;
+                  include fastcgi_params;
+                  fastcgi_pass 127.0.0.1:9000;
+                  fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+                }
+
+                location ~ \.php$ { return 404; }
+              }
+            }
+            EOF
+
+        # Start FPM and nginx
+        - php-fpm -D -y /usr/local/etc/php-fpm.conf
+        - nginx -c /tmp/nginx-soak.conf
+
+        # Poll until ready (max 10s)
+        - |
+            READY=0
+            for i in $(seq 1 10); do
+              if curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
+                echo "Ready after ${i}s"
+                READY=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$READY" -eq "0" ]; then
+              echo "ERROR: Stack not ready after 10s"
+              cat /tmp/nginx-error.log 2>/dev/null || true
+              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+              exit 1
+            fi
+
+        # Fire concurrent curl requests for SOAK_DURATION seconds
+        - echo "==> Soaking for ${SOAK_DURATION}s with ${SOAK_CONCURRENCY} concurrent requests..."
+        - |
+            END=$((SECONDS + SOAK_DURATION))
+            WAVES=0
+            while [ $SECONDS -lt $END ]; do
+              for i in $(seq 1 ${SOAK_CONCURRENCY}); do
+                curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} \
+                  -o /dev/null --max-time 5 &
+              done
+              wait
+              WAVES=$((WAVES + 1))
+            done
+            echo "Completed ${WAVES} waves"
+
+        # CHECK 1: FPM pool status
+        - echo "==> Checking FPM pool status..."
+        - |
+            FPM_STATUS=$(curl -sf http://127.0.0.1:${SOAK_PORT}/fpm-status || echo "")
+            if [ -z "$FPM_STATUS" ]; then
+              echo "FAIL: /fpm-status returned nothing — FPM pool is likely dead"
+              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+              exit 1
+            fi
+            if ! echo "$FPM_STATUS" | grep -q "accepted conn"; then
+              echo "FAIL: FPM pool not accepting connections"
+              echo "$FPM_STATUS"
+              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+              exit 1
+            fi
+            echo "OK: FPM pool alive"
+
+        # CHECK 2: Scan FPM logs for crash signals
+        - echo "==> Scanning FPM logs for crash signals..."
+        - |
+            FPM_LOG="/usr/local/var/log/php-fpm.log"
+            CRASH=$(grep -E \
+              "Segmentation fault|SIGSEGV|child [0-9]+ exited on signal|child [0-9]+ exited with code 255" \
+              "$FPM_LOG" 2>/dev/null || true)
+            if [ -n "$CRASH" ]; then
+              echo ""
+              echo "══════════════════════════════════════════════════════════"
+              echo "SOAK TEST FAILED — FPM crash signals detected in logs"
+              echo "══════════════════════════════════════════════════════════"
+              echo "--- Crash lines ---"
+              echo "$CRASH"
+              echo "--- Full FPM log ---"
+              cat "$FPM_LOG"
+              echo ""
+              echo "Check the PHP version in the image: line of this job."
+              echo "Review https://github.com/php/php-src/issues for opcache"
+              echo "segfault reports against that version."
+              exit 1
+            fi
+            echo "OK: No crash signals in FPM logs"
+
+        # CHECK 3: Final health route response
+        - echo "==> Final health check..."
+        - |
+            if ! curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
+              echo "FAIL: Health route not responding after soak"
+              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+              exit 1
+            fi
+            echo "OK: App responding after soak"
+            echo "══════════════════════════════════════════"
+            echo "SOAK TEST PASSED — FPM stable under load"
+            echo "══════════════════════════════════════════"
+
+    after_script:
+        - nginx -s stop -c /tmp/nginx-soak.conf 2>/dev/null || true
+        - kill $(cat /usr/local/var/run/php-fpm.pid) 2>/dev/null || true
+
+    rules:
+        - if: '$CI_COMMIT_BRANCH == "main"'
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+    timeout: 5 minutes
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: can-i-deploy
+#
+# Both pact-verify AND fpm-soak-test must pass before deploying.
+# A crashing image never reaches production even if contracts are valid.
 # ─────────────────────────────────────────────────────────────────────────────
 can-i-deploy:
     stage: can-i-deploy
-    needs: [pact-verify]
+    needs: [pact-verify, fpm-soak-test]
     image: pactfoundation/pact-cli:latest
     before_script: []
     script:
@@ -132,19 +324,12 @@ deploy-production:
     before_script: []
     script:
         - echo "Deploying ProductService ${APP_VERSION} to production..."
-        # kubectl set image deployment/product-service ...
+        # - kubectl set image deployment/product-service app=registry.example.com/product-service:${APP_VERSION}
+        # - helm upgrade product-service ./charts/product-service --set image.tag=${APP_VERSION}
         - echo "Deploy complete."
         - |
             pact-broker record-deployment \
               --pacticipant="${PROVIDER_NAME}" \
-              --version="${APP_VERSION}" \
-              --environment=production \
-              --broker-base-url="${PACT_BROKER_BASE_URL}" \
-              --broker-username="${PACT_BROKER_USERNAME}" \
-              --broker-password="${PACT_BROKER_PASSWORD}"
-        - |
-            pact-broker record-deployment \
-              --pacticipant="ProductService-Events" \
               --version="${APP_VERSION}" \
               --environment=production \
               --broker-base-url="${PACT_BROKER_BASE_URL}" \
