@@ -96,7 +96,7 @@ pact-verify:
         - sleep 3
         - |
             PROVIDER_BASE_URL="${PROVIDER_BASE_URL}" \
-            PACT_BROKER_URL="${PACT_BROKER_BASE_URL}" \
+            PACT_BROKER_BASE_URL="${PACT_BROKER_BASE_URL}" \
             PACT_BROKER_USERNAME="${PACT_BROKER_USERNAME}" \
             PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD}" \
             APP_VERSION="${APP_VERSION}" \
