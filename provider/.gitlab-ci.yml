@@ -32,14 +32,12 @@ stages:
 
 # ── Variables ─────────────────────────────────────────────────────────────────
 variables:
-    COMPOSER_HOME: "$CI_PROJECT_DIR/.composer"
-    APP_ENV: "test"
-    PACT_BROKER_BASE_URL: "${PACT_BROKER_BASE_URL}"
-    PACT_BROKER_USERNAME: "${PACT_BROKER_USERNAME}"
-    PACT_BROKER_PASSWORD: "${PACT_BROKER_PASSWORD}"
-    PROVIDER_NAME: "ProductService"
-    APP_VERSION: "${CI_COMMIT_SHORT_SHA}"
+    PACT_BROKER_BASE_URL: $PACT_BROKER_BASE_URL
+    PACT_BROKER_USERNAME: $PACT_BROKER_USERNAME
+    PACT_BROKER_PASSWORD: $PACT_BROKER_PASSWORD
     PROVIDER_BASE_URL: "http://localhost:8002"
+    APP_VERSION: $APP_VERSION
+    CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 cache:
