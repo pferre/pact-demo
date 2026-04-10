@@ -172,6 +172,8 @@ fpm-soak-test:
                   include /etc/nginx/fastcgi_params;
                   fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
                   fastcgi_param DOCUMENT_ROOT \$realpath_root;
+                  fastcgi_param PATH_INFO \$fastcgi_path_info;
+                  fastcgi_param REQUEST_URI \$request_uri;
                   internal;
                 }
 
