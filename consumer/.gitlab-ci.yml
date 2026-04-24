@@ -33,6 +33,9 @@ variables:
     APP_VERSION: $CI_COMMIT_SHORT_SHA
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
+# Note: ineffective on Kubernetes runners without a distributed cache backend.
+# Left in place so gitlab.com pipelines still benefit and self-hosted picks it
+# up automatically if the platform team configures S3/GCS/MinIO later.
 cache:
     key: "${CI_COMMIT_REF_SLUG}-composer"
     paths:
@@ -78,22 +81,31 @@ unit-tests:
 # ─────────────────────────────────────────────────────────────────────────────
 pact-consumer-tests:
     stage: pact-test
-    needs: [unit-tests]
+    needs:
+        - job: composer-install
+          artifacts: true
+        - job: unit-tests
+          artifacts: false
     script:
+        - composer install --no-interaction --no-progress
         - php vendor/bin/phpunit tests/Contract --testdox --group=contract
     artifacts:
         paths:
             - pacts/
         expire_in: 1 hour
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: soak-test
 # ─────────────────────────────────────────────────────────────────────────────
 fpm-soak-test:
     stage: soak-test
-    needs: [unit-tests]
+    needs:
+        - job: composer-install
+          artifacts: true
+        - job: unit-tests
+          artifacts: false
     image: php:8.4.17-fpm-alpine
     variables:
         SOAK_DURATION: "30"
@@ -237,8 +249,7 @@ fpm-soak-test:
         - nginx -s stop -c /tmp/nginx-soak.conf 2>/dev/null || true
         - kill $(cat /usr/local/var/run/php-fpm.pid) 2>/dev/null || true
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main"'
-        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
     timeout: 5 minutes
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,7 +269,7 @@ pact-publish:
               --broker-username="${PACT_BROKER_USERNAME}" \
               --broker-password="${PACT_BROKER_PASSWORD}"
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: can-i-deploy
@@ -290,8 +301,13 @@ deploy-production:
     needs: [can-i-deploy]
     image: pactfoundation/pact-cli:latest
     before_script: []
+    # ⚠️ record-deployment MUST only run after a successful deploy.
+    # `set -e` aborts the script block on any failure, so if a real deploy
+    # command is added above and fails, the broker will not be told we deployed.
     script:
+        - set -e
         - echo "Deploying OrderService ${APP_VERSION} to production..."
+        # TODO: replace echo with real deploy (kubectl, helm, etc.)
         - echo "Deploy complete."
         - |
             pact-broker record-deployment \

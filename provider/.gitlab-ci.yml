@@ -3,6 +3,11 @@
 #
 # Flow:
 #   build → test → pact-verify → soak-test → can-i-deploy → deploy
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   PACT_BROKER_BASE_URL  Your broker URL
+#   PACT_BROKER_USERNAME  pact
+#   PACT_BROKER_PASSWORD  (mark as Masked)
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -22,9 +27,11 @@ variables:
     PACT_BROKER_PASSWORD: $PACT_BROKER_PASSWORD
     PROVIDER_BASE_URL: "http://localhost:8002"
     APP_VERSION: $CI_COMMIT_SHORT_SHA
-    CI_COMMIT_REF_NAME: $CI_COMMIT_REF_NAME
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
+# Note: ineffective on Kubernetes runners without a distributed cache backend.
+# Left in place so gitlab.com pipelines still benefit and self-hosted picks it
+# up automatically if the platform team configures S3/GCS/MinIO later.
 cache:
     key: "${CI_COMMIT_REF_SLUG}-composer"
     paths:
@@ -69,13 +76,36 @@ unit-tests:
 # ─────────────────────────────────────────────────────────────────────────────
 pact-verify:
     stage: pact-verify
-    needs: [unit-tests]
+    needs:
+        - job: composer-install
+          artifacts: true
+        - job: unit-tests
+          artifacts: false
     script:
-        - php -S 0.0.0.0:8002 -t public/ &
-        - sleep 3
+        - composer install --no-interaction --no-progress
+        - mkdir -p var/cache var/log
+        - APP_ENV=dev php -S 0.0.0.0:8002 -t public/ > /tmp/php-server.log 2>&1 &
+        - |
+            READY=0
+            for i in $(seq 1 10); do
+              if curl -sf http://localhost:8002/api/products/health -o /dev/null; then
+                echo "Provider ready after ${i}s"
+                READY=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$READY" -eq "0" ]; then
+              echo "ERROR: Provider didn't come up"
+              cat /tmp/php-server.log
+              exit 1
+            fi
         - php vendor/bin/phpunit tests/Contract --testdox
+    after_script:
+        - cat /tmp/php-server.log 2>/dev/null || true
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "develop" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+        # Broker webhook trigger — consumer published new pacts, re-verify.
         - if: '$CI_PIPELINE_SOURCE == "trigger"'
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +113,11 @@ pact-verify:
 # ─────────────────────────────────────────────────────────────────────────────
 fpm-soak-test:
     stage: soak-test
-    needs: [unit-tests]
+    needs:
+        - job: composer-install
+          artifacts: true
+        - job: unit-tests
+          artifacts: false
     image: php:8.4.17-fpm-alpine
     variables:
         SOAK_DURATION: "30"
@@ -227,12 +261,13 @@ fpm-soak-test:
         - nginx -s stop -c /tmp/nginx-soak.conf 2>/dev/null || true
         - kill $(cat /usr/local/var/run/php-fpm.pid) 2>/dev/null || true
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main"'
-        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
     timeout: 5 minutes
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: can-i-deploy
+# Single invocation with two --pacticipant flags — one atomic check against
+# the broker for both the REST service and its async/events counterpart.
 # ─────────────────────────────────────────────────────────────────────────────
 can-i-deploy:
     stage: can-i-deploy
@@ -242,18 +277,8 @@ can-i-deploy:
     script:
         - |
             pact-broker can-i-deploy \
-              --pacticipant="ProductService" \
-              --version="${APP_VERSION}" \
-              --to-environment=production \
-              --broker-base-url="${PACT_BROKER_BASE_URL}" \
-              --broker-username="${PACT_BROKER_USERNAME}" \
-              --broker-password="${PACT_BROKER_PASSWORD}" \
-              --retry-while-unknown=6 \
-              --retry-interval=10
-        - |
-            pact-broker can-i-deploy \
-              --pacticipant="ProductService-Events" \
-              --version="${APP_VERSION}" \
+              --pacticipant="ProductService" --version="${APP_VERSION}" \
+              --pacticipant="ProductService-Events" --version="${APP_VERSION}" \
               --to-environment=production \
               --broker-base-url="${PACT_BROKER_BASE_URL}" \
               --broker-username="${PACT_BROKER_USERNAME}" \
@@ -271,8 +296,13 @@ deploy-production:
     needs: [can-i-deploy]
     image: pactfoundation/pact-cli:latest
     before_script: []
+    # ⚠️ record-deployment MUST only run after a successful deploy.
+    # `set -e` aborts the script block on any failure, so if a real deploy
+    # command is added above and fails, the broker will not be told we deployed.
     script:
+        - set -e
         - echo "Deploying ProductService ${APP_VERSION} to production..."
+        # TODO: replace echo with real deploy (kubectl, helm, etc.)
         - echo "Deploy complete."
         - |
             pact-broker record-deployment \
