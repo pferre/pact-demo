@@ -9,6 +9,7 @@ use PhpPact\Consumer\Matcher\Matcher;
 use PhpPact\Consumer\Model\ConsumerRequest;
 use PhpPact\Consumer\Model\ProviderResponse;
 use PhpPact\Standalone\MockService\MockServerConfig;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\HttpClient;
 
@@ -21,6 +22,7 @@ use Symfony\Component\HttpClient\HttpClient;
  *   3. Runs the real ProductServiceClient against the mock server.
  *   4. Writes the pact file to /app/pacts/ for publishing to the broker.
  */
+#[Group('contract')]
 class ProductServiceConsumerTest extends TestCase
 {
     private InteractionBuilder $builder;
@@ -63,6 +65,7 @@ class ProductServiceConsumerTest extends TestCase
                 'id'    => $this->matcher->integer(1),
                 'name'  => $this->matcher->like('Widget A'),
                 'price' => $this->matcher->decimal(9.99),
+                'stock' => $this->matcher->integer(100),
             ]);
 
         $this->builder
@@ -85,6 +88,7 @@ class ProductServiceConsumerTest extends TestCase
         self::assertArrayHasKey('id', $product);
         self::assertArrayHasKey('name', $product);
         self::assertArrayHasKey('price', $product);
+        self::assertArrayHasKey('stock', $product);
 
         // ── 4. Verify & write the pact file ─────────────────────────────────
         $this->builder->verify();
