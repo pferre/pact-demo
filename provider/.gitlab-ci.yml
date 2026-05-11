@@ -83,6 +83,7 @@ pact-verify:
           artifacts: false
     script:
         - composer install --no-interaction --no-progress
+        - rm -rf var/cache/*
         - mkdir -p var/cache var/log
         - APP_ENV=dev php -S 0.0.0.0:8002 -t public/ > /tmp/php-server.log 2>&1 &
         - |
@@ -100,6 +101,7 @@ pact-verify:
               cat /tmp/php-server.log
               exit 1
             fi
+        - curl -s http://localhost:8002/api/products/1 | tee /tmp/actual-response.json
         - php vendor/bin/phpunit tests/Contract --testdox
     after_script:
         - cat /tmp/php-server.log 2>/dev/null || true

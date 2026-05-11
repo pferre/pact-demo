@@ -50,7 +50,9 @@ class ProductServiceProviderTest extends TestCase
         $brokerPass = getenv('PACT_BROKER_PASSWORD') ?: 'pact';
         $providerUrl = getenv('PROVIDER_BASE_URL') ?: 'http://provider:80';
         $providerBranch = getenv('CI_COMMIT_REF_NAME') ?: 'main';
-        $providerVersion = getenv('APP_VERSION') ?: ('local-' . date('YmdHis'));
+        $providerVersion = getenv('CI_COMMIT_SHORT_SHA')
+            ?: getenv('APP_VERSION')
+                ?: ('local-' . date('YmdHis'));
 
         // ── Parse provider URL into host/port/scheme ──────────────────────
         $parsed = parse_url($providerUrl);

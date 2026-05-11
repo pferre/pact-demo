@@ -11,7 +11,7 @@ use Symfony\Component\Routing\Attribute\Route;
 class OrderController extends AbstractController
 {
     public function __construct(
-        private readonly ProductServiceClient $productClient
+        private readonly ProductServiceClient $productClient,
     ) {}
 
     /**
@@ -30,11 +30,11 @@ class OrderController extends AbstractController
         }
 
         return $this->json([
-            'order_id'   => uniqid('ORD-', true),
+            'order_id' => uniqid('ORD-', true),
             'product_id' => $product['id'],
-            'name'       => $product['name'],
-            'price'      => $product['price'],
-            'status'     => 'created',
+            'name' => $product['name'],
+            'price' => $product['price'],
+            'status' => 'created',
         ], 201);
     }
 

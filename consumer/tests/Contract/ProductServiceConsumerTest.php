@@ -40,7 +40,7 @@ class ProductServiceConsumerTest extends TestCase
         $this->config
             ->setConsumer('OrderService')
             ->setProvider('ProductService')
-            ->setPactDir('/app/pacts')
+            ->setPactDir(__DIR__ . '/../../pacts')
             ->setPactFileWriteMode('merge')  // ← add this
             ->setHost('localhost')
             ->setPort(7200);

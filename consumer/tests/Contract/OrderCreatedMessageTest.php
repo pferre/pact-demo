@@ -34,7 +34,7 @@ class OrderCreatedMessageTest extends TestCase
         $this->config
             ->setConsumer('OrderService')
             ->setProvider('ProductService-Events')
-            ->setPactDir('/app/pacts')
+            ->setPactDir(__DIR__ . '/../../pacts')
             ->setPactFileWriteMode('merge');  // ← add this
     }
 
