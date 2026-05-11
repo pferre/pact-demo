@@ -289,6 +289,8 @@ can-i-deploy:
               --retry-interval=10
     rules:
         - if: '$CI_COMMIT_BRANCH == "main"'
+        - if: "$CI_COMMIT_BRANCH =~ /^feature\//"
+          allow_failure: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: deploy

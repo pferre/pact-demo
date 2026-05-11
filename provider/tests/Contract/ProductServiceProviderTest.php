@@ -7,6 +7,7 @@ use PhpPact\Standalone\ProviderVerifier\Exception\InvalidVerifierHandleException
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderInfo;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderTransport;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\PublishOptions;
+use PhpPact\Standalone\ProviderVerifier\Model\ConsumerVersionSelectors;
 use PhpPact\Standalone\ProviderVerifier\Model\Source\Broker;
 use PhpPact\Standalone\ProviderVerifier\Model\VerifierConfig;
 use PhpPact\Standalone\ProviderVerifier\Verifier;
@@ -81,7 +82,16 @@ class ProductServiceProviderTest extends TestCase
             ->setPassword($brokerPass)
             ->setEnablePending(true)
             ->setIncludeWipPactSince('2024-01-01')
-            ->setProviderBranch($providerBranch);
+            ->setProviderBranch($providerBranch)
+            ->setConsumerVersionSelectors(
+                new ConsumerVersionSelectors(
+                    [
+                        'mainBranch' => true,
+                        'deployedOrReleased' => true,
+                        'matchingBranch' => true,
+                    ]
+                )
+            );
 
         // ── Publish options (tag results back to broker) ──────────────────
         $publishOptions = new PublishOptions();
