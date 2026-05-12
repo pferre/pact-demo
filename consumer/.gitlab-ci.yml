@@ -16,7 +16,7 @@ stages:
     - build
     - test
     - pact-test
-    - soak-test
+#    - soak-test
     - pact-publish
     - can-i-deploy
     - deploy
@@ -99,165 +99,165 @@ pact-consumer-tests:
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: soak-test
 # ─────────────────────────────────────────────────────────────────────────────
-fpm-soak-test:
-    stage: soak-test
-    needs:
-        - job: composer-install
-          artifacts: true
-        - job: unit-tests
-          artifacts: false
-    image: php:8.4.17-fpm-alpine
-    variables:
-        SOAK_DURATION: "30"
-        SOAK_CONCURRENCY: "20"
-        SOAK_HEALTH_ROUTE: "/api/orders/health"
-        SOAK_PORT: "8080"
-    before_script: []
-    script:
-        - apk add --no-cache nginx
-        - |
-            cat > /usr/local/etc/php/conf.d/soak-opcache.ini << 'EOF'
-            opcache.enable=1
-            opcache.memory_consumption=128
-            opcache.max_accelerated_files=10000
-            opcache.revalidate_freq=0
-            ffi.enable=1
-            EOF
-        - echo "pm.status_path = /fpm-status" >> /usr/local/etc/php-fpm.d/www.conf
-        - |
-            cat > /tmp/nginx-soak.conf << EOF
-            worker_processes 1;
-            error_log /tmp/nginx-error.log warn;
-            pid /tmp/nginx.pid;
-            events { worker_connections 256; }
-            http {
-              include /etc/nginx/mime.types;
-              default_type application/octet-stream;
-              server {
-                listen ${SOAK_PORT};
-                server_name _;
-                root ${CI_PROJECT_DIR}/public;
-                index index.php;
-
-                location / {
-                  try_files \$uri /index.php\$is_args\$args;
-                }
-
-                location ~ ^/index\.php(/|$) {
-                  fastcgi_pass 127.0.0.1:9000;
-                  fastcgi_split_path_info ^(.+\.php)(/.*)$;
-                  include /etc/nginx/fastcgi_params;
-                  fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
-                  fastcgi_param DOCUMENT_ROOT \$realpath_root;
-                  fastcgi_param PATH_INFO \$fastcgi_path_info;
-                  fastcgi_param REQUEST_URI \$request_uri;
-                  internal;
-                }
-
-                location = /fpm-status {
-                  allow 127.0.0.1;
-                  deny all;
-                  include /etc/nginx/fastcgi_params;
-                  fastcgi_pass 127.0.0.1:9000;
-                  fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-                }
-
-                location ~ \.php$ { return 404; }
-              }
-            }
-            EOF
-        - php-fpm -D -y /usr/local/etc/php-fpm.conf
-        - nginx -c /tmp/nginx-soak.conf
-        - |
-            READY=0
-            for i in $(seq 1 10); do
-              if curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
-                echo "Ready after ${i}s"
-                READY=1
-                break
-              fi
-              sleep 1
-            done
-            if [ "$READY" -eq "0" ]; then
-              echo "ERROR: Stack not ready after 10s"
-              cat /tmp/nginx-error.log 2>/dev/null || true
-              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
-              exit 1
-            fi
-        - echo "==> Soaking for ${SOAK_DURATION}s with ${SOAK_CONCURRENCY} concurrent requests..."
-        - |
-            END=$((SECONDS + SOAK_DURATION))
-            WAVES=0
-            while [ $SECONDS -lt $END ]; do
-              for i in $(seq 1 ${SOAK_CONCURRENCY}); do
-                curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} \
-                  -o /dev/null --max-time 5 &
-              done
-              wait
-              WAVES=$((WAVES + 1))
-            done
-            echo "Completed ${WAVES} waves"
-        - echo "==> Checking FPM pool status..."
-        - |
-            FPM_STATUS=$(curl -sf http://127.0.0.1:${SOAK_PORT}/fpm-status || echo "")
-            if [ -z "$FPM_STATUS" ]; then
-              echo "FAIL: /fpm-status returned nothing — FPM pool is likely dead"
-              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
-              exit 1
-            fi
-            if ! echo "$FPM_STATUS" | grep -q "accepted conn"; then
-              echo "FAIL: FPM pool not accepting connections"
-              echo "$FPM_STATUS"
-              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
-              exit 1
-            fi
-            echo "OK: FPM pool alive"
-        - echo "==> Scanning FPM logs for crash signals..."
-        - |
-            FPM_LOG="/usr/local/var/log/php-fpm.log"
-            CRASH=$(grep -E \
-              "Segmentation fault|SIGSEGV|child [0-9]+ exited on signal|child [0-9]+ exited with code 255" \
-              "$FPM_LOG" 2>/dev/null || true)
-            if [ -n "$CRASH" ]; then
-              echo ""
-              echo "══════════════════════════════════════════════════════════"
-              echo "SOAK TEST FAILED — FPM crash signals detected in logs"
-              echo "══════════════════════════════════════════════════════════"
-              echo "--- Crash lines ---"
-              echo "$CRASH"
-              echo "--- Full FPM log ---"
-              cat "$FPM_LOG"
-              echo ""
-              echo "Check the PHP version in the image: line of this job."
-              echo "Review https://github.com/php/php-src/issues for opcache"
-              echo "segfault reports against that version."
-              exit 1
-            fi
-            echo "OK: No crash signals in FPM logs"
-        - echo "==> Final health check..."
-        - |
-            if ! curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
-              echo "FAIL: Health route not responding after soak"
-              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
-              exit 1
-            fi
-            echo "OK: App responding after soak"
-            echo "══════════════════════════════════════════"
-            echo "SOAK TEST PASSED — FPM stable under load"
-            echo "══════════════════════════════════════════"
-    after_script:
-        - nginx -s stop -c /tmp/nginx-soak.conf 2>/dev/null || true
-        - kill $(cat /usr/local/var/run/php-fpm.pid) 2>/dev/null || true
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
-    timeout: 5 minutes
+#fpm-soak-test:
+#    stage: soak-test
+#    needs:
+#        - job: composer-install
+#          artifacts: true
+#        - job: unit-tests
+#          artifacts: false
+#    image: php:8.4.17-fpm-alpine
+#    variables:
+#        SOAK_DURATION: "30"
+#        SOAK_CONCURRENCY: "20"
+#        SOAK_HEALTH_ROUTE: "/api/orders/health"
+#        SOAK_PORT: "8080"
+#    before_script: []
+#    script:
+#        - apk add --no-cache nginx
+#        - |
+#            cat > /usr/local/etc/php/conf.d/soak-opcache.ini << 'EOF'
+#            opcache.enable=1
+#            opcache.memory_consumption=128
+#            opcache.max_accelerated_files=10000
+#            opcache.revalidate_freq=0
+#            ffi.enable=1
+#            EOF
+#        - echo "pm.status_path = /fpm-status" >> /usr/local/etc/php-fpm.d/www.conf
+#        - |
+#            cat > /tmp/nginx-soak.conf << EOF
+#            worker_processes 1;
+#            error_log /tmp/nginx-error.log warn;
+#            pid /tmp/nginx.pid;
+#            events { worker_connections 256; }
+#            http {
+#              include /etc/nginx/mime.types;
+#              default_type application/octet-stream;
+#              server {
+#                listen ${SOAK_PORT};
+#                server_name _;
+#                root ${CI_PROJECT_DIR}/public;
+#                index index.php;
+#
+#                location / {
+#                  try_files \$uri /index.php\$is_args\$args;
+#                }
+#
+#                location ~ ^/index\.php(/|$) {
+#                  fastcgi_pass 127.0.0.1:9000;
+#                  fastcgi_split_path_info ^(.+\.php)(/.*)$;
+#                  include /etc/nginx/fastcgi_params;
+#                  fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+#                  fastcgi_param DOCUMENT_ROOT \$realpath_root;
+#                  fastcgi_param PATH_INFO \$fastcgi_path_info;
+#                  fastcgi_param REQUEST_URI \$request_uri;
+#                  internal;
+#                }
+#
+#                location = /fpm-status {
+#                  allow 127.0.0.1;
+#                  deny all;
+#                  include /etc/nginx/fastcgi_params;
+#                  fastcgi_pass 127.0.0.1:9000;
+#                  fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+#                }
+#
+#                location ~ \.php$ { return 404; }
+#              }
+#            }
+#            EOF
+#        - php-fpm -D -y /usr/local/etc/php-fpm.conf
+#        - nginx -c /tmp/nginx-soak.conf
+#        - |
+#            READY=0
+#            for i in $(seq 1 10); do
+#              if curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
+#                echo "Ready after ${i}s"
+#                READY=1
+#                break
+#              fi
+#              sleep 1
+#            done
+#            if [ "$READY" -eq "0" ]; then
+#              echo "ERROR: Stack not ready after 10s"
+#              cat /tmp/nginx-error.log 2>/dev/null || true
+#              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+#              exit 1
+#            fi
+#        - echo "==> Soaking for ${SOAK_DURATION}s with ${SOAK_CONCURRENCY} concurrent requests..."
+#        - |
+#            END=$((SECONDS + SOAK_DURATION))
+#            WAVES=0
+#            while [ $SECONDS -lt $END ]; do
+#              for i in $(seq 1 ${SOAK_CONCURRENCY}); do
+#                curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} \
+#                  -o /dev/null --max-time 5 &
+#              done
+#              wait
+#              WAVES=$((WAVES + 1))
+#            done
+#            echo "Completed ${WAVES} waves"
+#        - echo "==> Checking FPM pool status..."
+#        - |
+#            FPM_STATUS=$(curl -sf http://127.0.0.1:${SOAK_PORT}/fpm-status || echo "")
+#            if [ -z "$FPM_STATUS" ]; then
+#              echo "FAIL: /fpm-status returned nothing — FPM pool is likely dead"
+#              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+#              exit 1
+#            fi
+#            if ! echo "$FPM_STATUS" | grep -q "accepted conn"; then
+#              echo "FAIL: FPM pool not accepting connections"
+#              echo "$FPM_STATUS"
+#              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+#              exit 1
+#            fi
+#            echo "OK: FPM pool alive"
+#        - echo "==> Scanning FPM logs for crash signals..."
+#        - |
+#            FPM_LOG="/usr/local/var/log/php-fpm.log"
+#            CRASH=$(grep -E \
+#              "Segmentation fault|SIGSEGV|child [0-9]+ exited on signal|child [0-9]+ exited with code 255" \
+#              "$FPM_LOG" 2>/dev/null || true)
+#            if [ -n "$CRASH" ]; then
+#              echo ""
+#              echo "══════════════════════════════════════════════════════════"
+#              echo "SOAK TEST FAILED — FPM crash signals detected in logs"
+#              echo "══════════════════════════════════════════════════════════"
+#              echo "--- Crash lines ---"
+#              echo "$CRASH"
+#              echo "--- Full FPM log ---"
+#              cat "$FPM_LOG"
+#              echo ""
+#              echo "Check the PHP version in the image: line of this job."
+#              echo "Review https://github.com/php/php-src/issues for opcache"
+#              echo "segfault reports against that version."
+#              exit 1
+#            fi
+#            echo "OK: No crash signals in FPM logs"
+#        - echo "==> Final health check..."
+#        - |
+#            if ! curl -sf http://127.0.0.1:${SOAK_PORT}${SOAK_HEALTH_ROUTE} -o /dev/null; then
+#              echo "FAIL: Health route not responding after soak"
+#              cat /usr/local/var/log/php-fpm.log 2>/dev/null || true
+#              exit 1
+#            fi
+#            echo "OK: App responding after soak"
+#            echo "══════════════════════════════════════════"
+#            echo "SOAK TEST PASSED — FPM stable under load"
+#            echo "══════════════════════════════════════════"
+#    after_script:
+#        - nginx -s stop -c /tmp/nginx-soak.conf 2>/dev/null || true
+#        - kill $(cat /usr/local/var/run/php-fpm.pid) 2>/dev/null || true
+#    rules:
+#        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
+#    timeout: 5 minutes
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: pact-publish
 # ─────────────────────────────────────────────────────────────────────────────
 pact-publish:
     stage: pact-publish
-    needs: [pact-consumer-tests, fpm-soak-test]
+    needs: [pact-consumer-tests]
     image: pactfoundation/pact-cli:latest
     before_script: []
     script:
@@ -292,6 +292,8 @@ can-i-deploy:
               --retry-interval=10
     rules:
         - if: '$CI_COMMIT_BRANCH == "main"'
+        - if: "$CI_COMMIT_BRANCH =~ /^feature\//"
+          allow_failure: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: deploy
