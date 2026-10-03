@@ -10,6 +10,12 @@ CYAN  := \033[0;36m
 RESET := \033[0m
 NETWORK := pact-demo_pact_network
 
+# Pacticipant version = 8-char git SHA (matches GitLab's CI_COMMIT_SHORT_SHA),
+# suffixed with -dirty when the working tree has uncommitted changes so local
+# edits never overwrite the pact published for a clean commit.
+GIT_SHA    := $(shell git rev-parse --short=8 HEAD)$(shell git diff --quiet HEAD || echo -dirty)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+
 
 help: ## Show this help
 	@echo ""
@@ -81,13 +87,14 @@ pact-publish: ## Publish consumer pacts to the broker via pact-cli container
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
-			--consumer-app-version=1.0.0 \
+			--consumer-app-version=$(GIT_SHA) \
+			--branch=$(GIT_BRANCH) \
 			--broker-base-url=http://pact-broker:9292 \
 			--broker-username=pact \
 			--broker-password=pact
 
 test-provider: ## Run provider verification against broker pacts
-	docker compose exec provider \
+	docker compose exec -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
 		php vendor/bin/phpunit tests/Contract --testdox
 
 pact-full-cycle: ## Run the full consumer → publish → verify cycle
@@ -134,13 +141,14 @@ pact-publish-message: ## Publish message pacts to broker
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
-			--consumer-app-version=$(shell git rev-parse --short HEAD) \
+			--consumer-app-version=$(GIT_SHA) \
+			--branch=$(GIT_BRANCH) \
 			--broker-base-url=http://pact-broker:9292 \
 			--broker-username=pact \
 			--broker-password=pact
 
 test-message-provider: ## Run order.created message pact provider verification
-	docker compose exec provider \
+	docker compose exec -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
 		php vendor/bin/phpunit tests/Contract/OrderCreatedMessageProviderTest.php --testdox
 
 pact-message-cycle: ## Run full message pact cycle

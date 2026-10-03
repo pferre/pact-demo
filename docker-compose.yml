@@ -57,8 +57,6 @@ services:
       PACT_BROKER_USERNAME: pact
       PACT_BROKER_PASSWORD: pact
       PROVIDER_BASE_URL: http://provider:80
-      APP_VERSION: local
-      CI_COMMIT_REF_NAME: main
     networks:
       - pact_network
     depends_on:

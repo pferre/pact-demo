@@ -169,8 +169,8 @@ the expected message shape.
 | `PACT_BROKER_BASE_URL` | `http://pact-broker:9292` | PACT Broker URL |
 | `PACT_BROKER_USERNAME` | `pact` | Broker basic auth username |
 | `PACT_BROKER_PASSWORD` | `pact` | Broker basic auth password |
-| `APP_VERSION` | `local` | Version string published to broker (set to `$CI_COMMIT_SHORT_SHA` in CI) |
-| `CI_COMMIT_REF_NAME` | `main` | Branch name used for broker scoping |
+| `APP_VERSION` | `local-<timestamp>` | Version published to broker — 8-char git SHA, injected by `make` locally and `$CI_COMMIT_SHORT_SHA` in CI |
+| `CI_COMMIT_REF_NAME` | `main` | Branch name used for broker scoping — injected by `make` locally, set by GitLab in CI |
 | `RABBITMQ_HOST` | `rabbitmq` | RabbitMQ hostname (runtime only) |
 | `RABBITMQ_PORT` | `5673` | RabbitMQ AMQP port (runtime only) |
 

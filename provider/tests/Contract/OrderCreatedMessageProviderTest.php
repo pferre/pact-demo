@@ -7,6 +7,7 @@ use PhpPact\Standalone\ProviderVerifier\Exception\InvalidVerifierHandleException
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderInfo;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\ProviderTransport;
 use PhpPact\Standalone\ProviderVerifier\Model\Config\PublishOptions;
+use PhpPact\Standalone\ProviderVerifier\Model\ConsumerVersionSelectors;
 use PhpPact\Standalone\ProviderVerifier\Model\Source\Broker;
 use PhpPact\Standalone\ProviderVerifier\Model\VerifierConfig;
 use PhpPact\Standalone\ProviderVerifier\Verifier;
@@ -120,7 +121,16 @@ class OrderCreatedMessageProviderTest extends TestCase
             ->setUsername($brokerUser)
             ->setPassword($brokerPass)
             ->setEnablePending(true)
-            ->setProviderBranch($providerBranch);
+            ->setProviderBranch($providerBranch)
+            ->setConsumerVersionSelectors(
+                new ConsumerVersionSelectors(
+                    [
+                        '{"mainBranch":true}',
+                        '{"deployedOrReleased":true}',
+                        '{"matchingBranch":true}',
+                    ]
+                )
+            );
 
         // ── Publish options ───────────────────────────────────────────────
         $publishOptions = new PublishOptions();
