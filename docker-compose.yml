@@ -28,7 +28,7 @@ services:
       PACT_BROKER_USERNAME: pact
       PACT_BROKER_PASSWORD: pact
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5673
+      RABBITMQ_PORT: 5672
       RABBITMQ_USER: guest
       RABBITMQ_PASSWORD: guest
     networks:
@@ -87,8 +87,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: pact_rabbitmq
     ports:
-      - "5673:5673"
-      - "15673:15673"
+      - "5673:5672"
+      - "15673:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest

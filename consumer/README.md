@@ -170,7 +170,7 @@ make pact-publish-message  # publishes message pacts
 | `PACT_BROKER_USERNAME` | `pact` | Broker basic auth username |
 | `PACT_BROKER_PASSWORD` | `pact` | Broker basic auth password |
 | `RABBITMQ_HOST` | `rabbitmq` | RabbitMQ hostname |
-| `RABBITMQ_PORT` | `5673` | RabbitMQ AMQP port |
+| `RABBITMQ_PORT` | `5672` | RabbitMQ AMQP port |
 | `RABBITMQ_USER` | `guest` | RabbitMQ username |
 | `RABBITMQ_PASSWORD` | `guest` | RabbitMQ password |
 
