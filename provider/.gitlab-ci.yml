@@ -2,7 +2,14 @@
 # Provider Service (Product Service) — GitLab CI Pipeline
 #
 # Flow:
-#   build → test → pact-verify → soak-test → can-i-deploy → deploy
+#   branch-name → build → test → pact-verify → soak-test → can-i-deploy → deploy
+#
+# Branching: feature branches + MRs into main. Feature branches must be named
+#   feature/issue-<JIRA KEY>   e.g. feature/issue-JIRA-123, feature/issue-JIRA123
+# Use the same branch name as the consumer change so the matchingBranch
+# selector picks up its pact. pact-verify is blocking everywhere (new consumer
+# expectations are pending, so they don't break the build); can-i-deploy is
+# blocking on main, advisory everywhere else.
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
 #   PACT_BROKER_BASE_URL  Your broker URL
@@ -11,6 +18,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
+
+# One pipeline per push: an MR pipeline when the branch has an open MR,
+# otherwise a branch pipeline. Broker webhook triggers always run.
+workflow:
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "trigger"'
+        - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+        - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+          when: never
+        - if: '$CI_COMMIT_BRANCH'
 
 stages:
     - build
@@ -45,6 +62,27 @@ before_script:
     - pecl install amqp && docker-php-ext-enable amqp
     - echo "ffi.enable=1" >> /usr/local/etc/php/php.ini
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE: .pre — reject branches that don't follow the naming convention.
+# Every job chains back to composer-install, which waits on .pre, so a failure
+# here stops the whole pipeline before any verification results are published.
+# ─────────────────────────────────────────────────────────────────────────────
+branch-name:
+    stage: .pre
+    image: alpine:3
+    before_script: []
+    variables:
+        BRANCH_PATTERN: '^feature/issue-[A-Z][A-Z0-9]*-?[0-9]+$'
+    script:
+        - |
+            if ! echo "${CI_COMMIT_REF_NAME}" | grep -Eq "${BRANCH_PATTERN}"; then
+              echo "ERROR: branch '${CI_COMMIT_REF_NAME}' does not match ${BRANCH_PATTERN}"
+              echo "Use feature/issue-<JIRA KEY>, e.g. feature/issue-JIRA-123"
+              exit 1
+            fi
+    rules:
+        - if: '$CI_COMMIT_REF_NAME != "main"'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: build
@@ -105,12 +143,6 @@ pact-verify:
         - php vendor/bin/phpunit tests/Contract --testdox
     after_script:
         - cat /tmp/php-server.log 2>/dev/null || true
-    rules:
-        - if: '$CI_COMMIT_BRANCH == "main" || $CI_PIPELINE_SOURCE == "merge_request_event"'
-        # Broker webhook trigger — consumer published new pacts, re-verify.
-        - if: '$CI_PIPELINE_SOURCE == "trigger"'
-        - if: "$CI_COMMIT_BRANCH =~ /^feature\//"
-          allow_failure: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: soak-test
@@ -289,10 +321,13 @@ can-i-deploy:
               --broker-password="${PACT_BROKER_PASSWORD}" \
               --retry-while-unknown=6 \
               --retry-interval=10
+    # Webhook-triggered runs only re-verify consumer pacts; never deploy.
+    # Blocking on main; advisory on feature branches/MRs.
     rules:
-        - if: '$CI_COMMIT_BRANCH == "main"'
-        - if: "$CI_COMMIT_BRANCH =~ /^feature\//"
-          allow_failure: true
+        - if: '$CI_PIPELINE_SOURCE == "trigger"'
+          when: never
+        - if: '$CI_COMMIT_REF_NAME == "main"'
+        - allow_failure: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE: deploy
@@ -329,4 +364,6 @@ deploy-production:
     environment:
         name: production
     rules:
+        - if: '$CI_PIPELINE_SOURCE == "trigger"'
+          when: never
         - if: '$CI_COMMIT_BRANCH == "main"'
