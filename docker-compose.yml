@@ -68,7 +68,7 @@ services:
   # PACT BROKER
   # ─────────────────────────────────────────────
   pact-broker:
-    image: pactfoundation/pact-broker:latest
+    image: pactfoundation/pact-broker:3.0.0-pactbroker2.121.2
     container_name: pact_broker
     ports:
       - "9292:9292"
