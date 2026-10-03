@@ -3,7 +3,7 @@
 
 A minimal two-microservice demo that shows how **PACT consumer-driven contract testing**
 fits into an automated delivery pipeline — covering both **HTTP API pacts** and
-**async message pacts** (RabbitMQ).
+**async message pacts** (In this demo, RabbitMQ used).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
