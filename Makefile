@@ -1,4 +1,4 @@
-.PHONY: help up down build restart logs shell-consumer shell-provider \
+.PHONY: help up down build build-clean restart logs shell-consumer shell-provider \
         install-consumer install-provider \
         test-consumer test-provider \
         pact-publish pact-verify pact-full-cycle
@@ -28,7 +28,10 @@ up: ## Start all services
 down: ## Stop all services
 	docker compose down
 
-build: ## Rebuild all images
+build: ## Build all images (uses layer cache)
+	docker compose build
+
+build-clean: ## Rebuild all images from scratch (no cache)
 	docker compose build --no-cache
 
 restart: down up ## Restart all services
