@@ -13,8 +13,13 @@
 #
 # Required CI/CD variables (Settings → CI/CD → Variables):
 #   PACT_BROKER_BASE_URL  Your broker URL
-#   PACT_BROKER_USERNAME  pact
-#   PACT_BROKER_PASSWORD  (mark as Masked)
+#   and either, for a self-hosted broker:
+#     PACT_BROKER_USERNAME  pact
+#     PACT_BROKER_PASSWORD  (mark as Masked)
+#   or, for PactFlow:
+#     PACT_BROKER_TOKEN     API token (mark as Masked)
+# pact-broker CLI and the provider verifier read these from the environment,
+# so switching broker only means changing variables.
 # ─────────────────────────────────────────────────────────────────────────────
 
 image: php:8.3-cli-alpine
@@ -39,9 +44,6 @@ stages:
 
 # ── Variables ─────────────────────────────────────────────────────────────────
 variables:
-    PACT_BROKER_BASE_URL: $PACT_BROKER_BASE_URL
-    PACT_BROKER_USERNAME: $PACT_BROKER_USERNAME
-    PACT_BROKER_PASSWORD: $PACT_BROKER_PASSWORD
     PROVIDER_BASE_URL: "http://localhost:8002"
     APP_VERSION: $CI_COMMIT_SHORT_SHA
 
@@ -316,9 +318,6 @@ can-i-deploy:
               --pacticipant="ProductService" --version="${APP_VERSION}" \
               --pacticipant="ProductService-Events" --version="${APP_VERSION}" \
               --to-environment=production \
-              --broker-base-url="${PACT_BROKER_BASE_URL}" \
-              --broker-username="${PACT_BROKER_USERNAME}" \
-              --broker-password="${PACT_BROKER_PASSWORD}" \
               --retry-while-unknown=6 \
               --retry-interval=10
     # Webhook-triggered runs only re-verify consumer pacts; never deploy.
@@ -349,18 +348,12 @@ deploy-production:
             pact-broker record-deployment \
               --pacticipant="ProductService" \
               --version="${APP_VERSION}" \
-              --environment=production \
-              --broker-base-url="${PACT_BROKER_BASE_URL}" \
-              --broker-username="${PACT_BROKER_USERNAME}" \
-              --broker-password="${PACT_BROKER_PASSWORD}"
+              --environment=production
         - |
             pact-broker record-deployment \
               --pacticipant="ProductService-Events" \
               --version="${APP_VERSION}" \
-              --environment=production \
-              --broker-base-url="${PACT_BROKER_BASE_URL}" \
-              --broker-username="${PACT_BROKER_USERNAME}" \
-              --broker-password="${PACT_BROKER_PASSWORD}"
+              --environment=production
     environment:
         name: production
     rules:

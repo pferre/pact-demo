@@ -25,3 +25,6 @@ Thumbs.db
 .vscode/
 *.swp
 consumer/pacts/
+
+# Local broker override for the Makefile (e.g. PactFlow token)
+.broker.env

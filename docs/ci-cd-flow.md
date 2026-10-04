@@ -243,8 +243,10 @@ provider yet, `can-i-deploy` returns a "still pending" status and retries
 | Option | Best for | Notes |
 |--------|----------|-------|
 | Self-hosted (this repo) | Demo, internal teams | Run `make up`, broker at `localhost:9292` |
-| [PactFlow](https://pactflow.io) | Production use | Managed, includes network diagram, webhooks UI, analytics. Free tier available. |
+| [PactFlow](https://pactflow.io) | Production use | Managed, includes network diagram, webhooks UI, analytics. Sign-up is now a 30-day Swagger trial. |
 
-To switch to PactFlow, replace `--broker-username/password` with
-`--broker-token` in both `.gitlab-ci.yml` files and update
-`PACT_BROKER_BASE_URL` to your PactFlow org URL.
+Switching broker is a variables-only change: the `pact-broker` CLI and the
+provider verifier read `PACT_BROKER_*` from the environment. For PactFlow, set
+`PACT_BROKER_BASE_URL` to your org URL and `PACT_BROKER_TOKEN`, and remove
+`PACT_BROKER_USERNAME`/`PASSWORD`. Locally, put the same two values in a
+git-ignored `.broker.env` file and the `make` targets will use them.

@@ -25,6 +25,7 @@ use Symfony\Component\Dotenv\Dotenv;
  *   PACT_BROKER_URL Broker base URL
  *   PACT_BROKER_USERNAME Broker basic auth username
  *   PACT_BROKER_PASSWORD Broker basic auth password
+ *   PACT_BROKER_TOKEN Broker API token (PactFlow); used instead of basic auth when set
  *   PROVIDER_BASE_URL URL of the running provider
  *   APP_VERSION Version string (CI commit SHA or local fallback)
  *   CI_COMMIT_REF_NAME Branch name for scoping verification
@@ -49,6 +50,7 @@ class ProductServiceProviderTest extends TestCase
         $brokerUrl = getenv('PACT_BROKER_BASE_URL') ?: getenv('PACT_BROKER_URL') ?: 'http://pact-broker:9292';
         $brokerUser = getenv('PACT_BROKER_USERNAME') ?: 'pact';
         $brokerPass = getenv('PACT_BROKER_PASSWORD') ?: 'pact';
+        $brokerToken = getenv('PACT_BROKER_TOKEN') ?: null;
         $providerUrl = getenv('PROVIDER_BASE_URL') ?: 'http://provider:80';
         $providerBranch = getenv('CI_COMMIT_REF_NAME') ?: 'main';
         $providerVersion = getenv('APP_VERSION') ?: ('local-' . date('YmdHis'));
@@ -74,10 +76,14 @@ class ProductServiceProviderTest extends TestCase
 
         // ── Broker source (where to fetch pacts from) ─────────────────────
         $broker = new Broker();
+        // PactFlow authenticates with a token, the self-hosted broker with basic auth
+        if ($brokerToken) {
+            $broker->setToken($brokerToken);
+        } else {
+            $broker->setUsername($brokerUser)->setPassword($brokerPass);
+        }
         $broker
             ->setUrl(new Uri($brokerUrl))
-            ->setUsername($brokerUser)
-            ->setPassword($brokerPass)
             ->setEnablePending(true)
             ->setIncludeWipPactSince('2024-01-01')
             ->setProviderBranch($providerBranch)
