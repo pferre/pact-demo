@@ -62,10 +62,11 @@ class ProductServiceConsumerTest extends TestCase
             ->setStatus(200)
             ->addHeader('Content-Type', 'application/json')
             ->setBody([
-                'id'    => $this->matcher->integer(1),
-                'name'  => $this->matcher->like('Widget A'),
+                'id' => $this->matcher->integer(1),
+                'name' => $this->matcher->like('Widget A'),
                 'price' => $this->matcher->decimal(9.99),
                 'stock' => $this->matcher->integer(100),
+                'date_created' => $this->matcher->date(),
             ]);
 
         $this->builder
@@ -89,6 +90,7 @@ class ProductServiceConsumerTest extends TestCase
         self::assertArrayHasKey('name', $product);
         self::assertArrayHasKey('price', $product);
         self::assertArrayHasKey('stock', $product);
+        self::assertArrayHasKey('date_created', $product);
 
         // ── 4. Verify & write the pact file ─────────────────────────────────
         $this->builder->verify();
