@@ -22,7 +22,10 @@ With PACT, the pipeline blocks the deployment before it ever ships.
 CONSUMER REPO (OrderService)          PROVIDER REPO (ProductService)
 ─────────────────────────────────     ──────────────────────────────────────
 
- push to main                          push to main
+ push / MR                             push / MR / broker webhook
+   │                                     │
+   ▼                                     ▼
+ branch-name (not on main)             branch-name (not on main)
    │                                     │
    ▼                                     ▼
  composer-install                      composer-install
@@ -52,6 +55,43 @@ CONSUMER REPO (OrderService)          PROVIDER REPO (ProductService)
    (broker updated)
 ```
 
+`deploy-production` / `record-deployment` only run on `main`. On feature
+branches and MRs everything up to `can-i-deploy` runs, and `can-i-deploy`
+is advisory (`allow_failure`).
+
+---
+
+## Branching Model
+
+Both repos use feature branches merged into `main` via MRs.
+
+- **Naming:** `feature/issue-<JIRA KEY>`, e.g. `feature/issue-JIRA-123` or
+  `feature/issue-JIRA123`. The `branch-name` job fails the pipeline for any
+  other branch name (pattern `^feature/issue-[A-Z][A-Z0-9]*-?[0-9]+$`).
+- **One pipeline per push:** an MR pipeline when the branch has an open MR,
+  otherwise a branch pipeline.
+- **Pacts are published from every pipeline** under the branch name
+  (`--branch`), so the broker always knows which branch an expectation came from.
+- **Provider verification** uses the selectors `mainBranch`,
+  `deployedOrReleased` and `matchingBranch`, plus pending and WIP pacts.
+
+### Introducing a new field (consumer-first)
+
+1. **Consumer** — on `feature/issue-JIRA-123`, add the field to the contract
+   test and push. The pact is published on that branch. The webhook triggers
+   provider `main`, which verifies it as a WIP/pending pact: it fails, but
+   does not break the provider build. The consumer's advisory `can-i-deploy`
+   shows red.
+2. **Provider** — on a branch with the **same name**
+   (`feature/issue-JIRA-123`), implement the field. `matchingBranch` picks up
+   the consumer's pact and verification passes. Merge → deploy →
+   `record-deployment`.
+3. **Consumer** — re-run the pipeline: `can-i-deploy` is now green (a
+   deployed provider version satisfies the pact). Merge → deploy.
+
+Never merge the consumer before step 2 is deployed — `can-i-deploy` on
+`main` will block its deploy until it is.
+
 ---
 
 ## Stage-by-Stage Breakdown
@@ -60,11 +100,12 @@ CONSUMER REPO (OrderService)          PROVIDER REPO (ProductService)
 
 | Stage | What happens | Fails if... |
 |-------|-------------|-------------|
+| `.pre` | `branch-name` check (skipped on `main`) | Branch isn't `feature/issue-<JIRA KEY>` |
 | `build` | `composer install` | Dependencies can't resolve |
 | `test` | Unit tests (non-contract) | Business logic is broken |
 | `pact-test` | Boots PACT mock server, runs `ProductServiceClient` against it, writes `pacts/*.json` | Client doesn't match the defined interaction |
 | `pact-publish` | Uploads pact file to broker, tagged with commit SHA + branch | Broker is unreachable |
-| `can-i-deploy` | Asks broker: *"Has the provider verified this pact?"* | Provider hasn't verified yet, or verification failed |
+| `can-i-deploy` | Asks broker: *"Has the provider verified this pact?"* (advisory off `main`) | Provider hasn't verified yet, or verification failed |
 | `deploy` | Ships the consumer | `can-i-deploy` returned non-zero |
 
 ---
@@ -73,10 +114,11 @@ CONSUMER REPO (OrderService)          PROVIDER REPO (ProductService)
 
 | Stage | What happens | Fails if... |
 |-------|-------------|-------------|
+| `.pre` | `branch-name` check (skipped on `main`) | Branch isn't `feature/issue-<JIRA KEY>` |
 | `build` | `composer install` | Dependencies can't resolve |
 | `test` | Unit tests (non-contract) | Business logic is broken |
 | `pact-verify` | Fetches ALL consumer pacts from broker, replays each request against the **real** running provider, publishes results | Provider response doesn't match any consumer's contract |
-| `can-i-deploy` | Asks broker: *"Is this provider version safe for all consumers in production?"* | Any consumer's contract is not satisfied |
+| `can-i-deploy` | Asks broker: *"Is this provider version safe for all consumers in production?"* (advisory off `main`, skipped on webhook runs) | Any consumer's contract is not satisfied |
 | `deploy` | Ships the provider | `can-i-deploy` returned non-zero |
 
 ---
@@ -201,8 +243,10 @@ provider yet, `can-i-deploy` returns a "still pending" status and retries
 | Option | Best for | Notes |
 |--------|----------|-------|
 | Self-hosted (this repo) | Demo, internal teams | Run `make up`, broker at `localhost:9292` |
-| [PactFlow](https://pactflow.io) | Production use | Managed, includes network diagram, webhooks UI, analytics. Free tier available. |
+| [PactFlow](https://pactflow.io) | Production use | Managed, includes network diagram, webhooks UI, analytics. Sign-up is now a 30-day Swagger trial. |
 
-To switch to PactFlow, replace `--broker-username/password` with
-`--broker-token` in both `.gitlab-ci.yml` files and update
-`PACT_BROKER_BASE_URL` to your PactFlow org URL.
+Switching broker is a variables-only change: the `pact-broker` CLI and the
+provider verifier read `PACT_BROKER_*` from the environment. For PactFlow, set
+`PACT_BROKER_BASE_URL` to your org URL and `PACT_BROKER_TOKEN`, and remove
+`PACT_BROKER_USERNAME`/`PASSWORD`. Locally, put the same two values in a
+git-ignored `.broker.env` file and the `make` targets will use them.

@@ -93,6 +93,7 @@ class OrderCreatedMessageProviderTest extends TestCase
         $brokerUrl = getenv('PACT_BROKER_BASE_URL') ?: getenv('PACT_BROKER_URL') ?: 'http://pact-broker:9292';
         $brokerUser = getenv('PACT_BROKER_USERNAME') ?: 'pact';
         $brokerPass = getenv('PACT_BROKER_PASSWORD') ?: 'pact';
+        $brokerToken = getenv('PACT_BROKER_TOKEN') ?: null;
         $providerBranch = getenv('CI_COMMIT_REF_NAME') ?: 'main';
         $providerVersion = getenv('APP_VERSION') ?: ('local-' . date('YmdHis'));
 
@@ -116,10 +117,14 @@ class OrderCreatedMessageProviderTest extends TestCase
 
         // ── Broker source ─────────────────────────────────────────────────
         $broker = new Broker();
+        // PactFlow authenticates with a token, the self-hosted broker with basic auth
+        if ($brokerToken) {
+            $broker->setToken($brokerToken);
+        } else {
+            $broker->setUsername($brokerUser)->setPassword($brokerPass);
+        }
         $broker
             ->setUrl(new Uri($brokerUrl))
-            ->setUsername($brokerUser)
-            ->setPassword($brokerPass)
             ->setEnablePending(true)
             ->setProviderBranch($providerBranch)
             ->setConsumerVersionSelectors(

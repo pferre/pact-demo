@@ -16,6 +16,23 @@ NETWORK := pact-demo_pact_network
 GIT_SHA    := $(shell git rev-parse --short=8 HEAD)$(shell git diff --quiet HEAD || echo -dirty)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
+# Broker connection. Defaults to the local docker-compose broker. To use another
+# broker (e.g. PactFlow), export PACT_BROKER_BASE_URL and PACT_BROKER_TOKEN, or
+# put them in a git-ignored .broker.env file (plain KEY=value lines, no quotes).
+-include .broker.env
+PACT_BROKER_BASE_URL ?= http://pact-broker:9292
+PACT_BROKER_USERNAME ?= pact
+PACT_BROKER_PASSWORD ?= pact
+export PACT_BROKER_BASE_URL PACT_BROKER_USERNAME PACT_BROKER_PASSWORD PACT_BROKER_TOKEN
+
+# Env flags for docker run / compose exec: values come from the exported
+# variables above, so the token never appears on the command line.
+ifdef PACT_BROKER_TOKEN
+BROKER_ENV := -e PACT_BROKER_BASE_URL -e PACT_BROKER_TOKEN
+else
+BROKER_ENV := -e PACT_BROKER_BASE_URL -e PACT_BROKER_USERNAME -e PACT_BROKER_PASSWORD
+endif
+
 
 help: ## Show this help
 	@echo ""
@@ -84,17 +101,15 @@ test-consumer: ## Run consumer contract tests (generates pact file)
 pact-publish: ## Publish consumer pacts to the broker via pact-cli container
 	docker run --rm \
 		--network $(NETWORK) \
+		$(BROKER_ENV) \
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
 			--consumer-app-version=$(GIT_SHA) \
-			--branch=$(GIT_BRANCH) \
-			--broker-base-url=http://pact-broker:9292 \
-			--broker-username=pact \
-			--broker-password=pact
+			--branch=$(GIT_BRANCH)
 
 test-provider: ## Run provider verification against broker pacts
-	docker compose exec -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
+	docker compose exec $(BROKER_ENV) -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
 		php vendor/bin/phpunit tests/Contract --testdox
 
 pact-full-cycle: ## Run the full consumer → publish → verify cycle
@@ -138,17 +153,15 @@ test-message-consumer: ## Run order.created message pact consumer test
 pact-publish-message: ## Publish message pacts to broker
 	docker run --rm \
 		--network $(NETWORK) \
+		$(BROKER_ENV) \
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
 			--consumer-app-version=$(GIT_SHA) \
-			--branch=$(GIT_BRANCH) \
-			--broker-base-url=http://pact-broker:9292 \
-			--broker-username=pact \
-			--broker-password=pact
+			--branch=$(GIT_BRANCH)
 
 test-message-provider: ## Run order.created message pact provider verification
-	docker compose exec -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
+	docker compose exec $(BROKER_ENV) -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
 		php vendor/bin/phpunit tests/Contract/OrderCreatedMessageProviderTest.php --testdox
 
 pact-message-cycle: ## Run full message pact cycle
