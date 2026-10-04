@@ -1,7 +1,7 @@
 .PHONY: help up down build build-clean restart logs shell-consumer shell-provider \
         install-consumer install-provider \
-        test-consumer test-provider \
-        pact-publish pact-verify pact-full-cycle
+        test-consumer test-provider test-provider-as-main \
+        pact-publish pact-verify pact-full-cycle can-i-deploy can-i-merge
 
 # ──────────────────────────────────────────────
 # Colours
@@ -15,6 +15,7 @@ NETWORK := pact-demo_pact_network
 # edits never overwrite the pact published for a clean commit.
 GIT_SHA    := $(shell git rev-parse --short=8 HEAD)$(shell git diff --quiet HEAD || echo -dirty)
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+MAIN_SHA   := $(shell git rev-parse --short=8 main)
 
 # Broker connection. Defaults to the local docker-compose broker. To use another
 # broker (e.g. PactFlow), export PACT_BROKER_BASE_URL and PACT_BROKER_TOKEN, or
@@ -33,12 +34,19 @@ else
 BROKER_ENV := -e PACT_BROKER_BASE_URL -e PACT_BROKER_USERNAME -e PACT_BROKER_PASSWORD
 endif
 
+PACT_CLI := docker run --rm --network $(NETWORK) $(BROKER_ENV)
+
+# can-i-deploy / can-i-merge defaults, override on the command line:
+#   make can-i-deploy PACTICIPANT=ProductService ENV=test
+PACTICIPANT ?= OrderService
+ENV         ?= production
+
 
 help: ## Show this help
 	@echo ""
 	@echo "  $(CYAN)PACT Demo — available commands$(RESET)"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-25s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 
@@ -99,9 +107,7 @@ test-consumer: ## Run consumer contract tests (generates pact file)
 		php vendor/bin/phpunit tests/Contract --testdox
 
 pact-publish: ## Publish consumer pacts to the broker via pact-cli container
-	docker run --rm \
-		--network $(NETWORK) \
-		$(BROKER_ENV) \
+	$(PACT_CLI) \
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
@@ -111,6 +117,25 @@ pact-publish: ## Publish consumer pacts to the broker via pact-cli container
 test-provider: ## Run provider verification against broker pacts
 	docker compose exec $(BROKER_ENV) -e APP_VERSION=$(GIT_SHA) -e CI_COMMIT_REF_NAME=$(GIT_BRANCH) provider \
 		php vendor/bin/phpunit tests/Contract --testdox
+
+# Simulates a separate provider repo sitting on main: feature-branch pacts are
+# only picked up as WIP pacts, not via matchingBranch. Results are published
+# against main's SHA even though the checked-out provider code is the current one.
+test-provider-as-main: ## Run provider verification posing as main (WIP-pact path)
+	@$(MAKE) test-provider GIT_BRANCH=main GIT_SHA=$(MAIN_SHA)
+
+can-i-deploy: ## Check PACTICIPANT (default OrderService) at HEAD against ENV (default production)
+	$(PACT_CLI) pactfoundation/pact-cli:latest \
+		pact-broker can-i-deploy \
+			--pacticipant=$(PACTICIPANT) \
+			--version=$(GIT_SHA) \
+			--to-environment=$(ENV)
+
+can-i-merge: ## Check PACTICIPANT (default OrderService) at HEAD is compatible with main
+	$(PACT_CLI) pactfoundation/pact-cli:latest \
+		pact-broker can-i-merge \
+			--pacticipant=$(PACTICIPANT) \
+			--version=$(GIT_SHA)
 
 pact-full-cycle: ## Run the full consumer → publish → verify cycle
 	@echo "$(CYAN)Step 1: Running consumer contract tests...$(RESET)"
@@ -151,9 +176,7 @@ test-message-consumer: ## Run order.created message pact consumer test
 		php vendor/bin/phpunit tests/Contract/OrderCreatedMessageTest.php --testdox
 
 pact-publish-message: ## Publish message pacts to broker
-	docker run --rm \
-		--network $(NETWORK) \
-		$(BROKER_ENV) \
+	$(PACT_CLI) \
 		-v $(PWD)/consumer/pacts:/pacts \
 		pactfoundation/pact-cli:latest \
 		pact-broker publish /pacts \
